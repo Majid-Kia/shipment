@@ -3,6 +3,9 @@ import { cleanup } from "@testing-library/react";
 import { afterAll, afterEach, beforeAll } from "vitest";
 
 import { server } from "@/mocks/server";
+import { shipmentRepository } from "@/mocks/database";
+import { resetRequestCounter } from "@/mocks/handlers";
+import { resetMutationScenarios } from "@/mocks/scenarios";
 
 Object.defineProperty(window, "matchMedia", {
   configurable: true,
@@ -26,6 +29,9 @@ beforeAll(() => {
 afterEach(() => {
   cleanup();
   server.resetHandlers();
+  shipmentRepository.reset();
+  resetMutationScenarios();
+  resetRequestCounter();
 });
 
 afterAll(() => {
