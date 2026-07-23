@@ -1,6 +1,6 @@
 # Initial Architectural Decisions
 
-Status values are **Proposed** until implementation begins. These decisions optimize for the assignment's 15–20 hour limit and should be revisited if product/backend facts differ.
+Human-reviewed choices are marked **Accepted**; remaining initial choices stay **Proposed** until implementation begins. All decisions optimize for the assignment's 15–20 hour limit and should be revisited if product/backend facts differ.
 
 ## ADR-001: Use feature-oriented modules with explicit domain and transport boundaries
 
@@ -12,7 +12,7 @@ Status values are **Proposed** until implementation begins. These decisions opti
 ## ADR-002: Assign state to TanStack Query, React Router, local React, and a narrow reconciliation registry
 
 - **Status:** Proposed
-- **Decision:** TanStack Query owns server snapshots; Router owns all navigable filters/page/selected shipment; local React owns transient interaction state; an injected non-rendering registry owns event high-water marks, deduplication, and pending mutation overlays.
+- **Decision:** TanStack Query owns server snapshots; Router owns only required shareable filters and page; local React owns selected shipment, details-sheet state, and other transient interaction state; an injected non-rendering registry owns event high-water marks, deduplication, pending mutation overlays, and ordered event patches received during a pending mutation.
 - **Rationale:** Each state type has different lifecycle and consistency needs. Redux/Zustand would duplicate Query/Router state and add synchronization paths without solving a requirement.
 - **Consequences:** The registry needs explicit reset/cleanup in tests and app lifecycle. Only connection UI subscribes to transport state, limiting render fan-out.
 
@@ -24,12 +24,12 @@ Status values are **Proposed** until implementation begins. These decisions opti
 - **Alternatives rejected:** Virtualization adds measurement/accessibility/test complexity to only 50 rows. Infinite scrolling weakens URL restoration and deterministic navigation.
 - **Consequences:** Realtime membership/order changes are corrected by debounced refetch. At 100,000 records the real backend needs indexes and may move to cursor pagination.
 
-## ADR-004: Treat the URL as the canonical filter and selection state
+## ADR-004: Treat the URL as the canonical required filter and pagination state
 
-- **Status:** Proposed
-- **Decision:** Canonical URL params are search, exception type, priority, status, origin, assigned state, page, and selected shipment. Defaults/invalid values are omitted or normalized.
-- **Rationale:** Refresh, sharing, deep linking, and browser history work without duplicating state.
-- **Consequences:** A typed codec is required. Debounced input keeps a local draft only until it commits to the URL. Filter commits reset page atomically.
+- **Status:** Accepted
+- **Decision:** Canonical URL params are exactly search, exception type, priority, status, origin, assigned state, and page. Defaults/invalid values are omitted or normalized. Selected shipment and sheet open state are local React state.
+- **Rationale:** Refresh, sharing, and browser history work for assignment-required filters without expanding URL scope beyond the requirement.
+- **Consequences:** A typed codec is required. Debounced input keeps a local draft only until it commits to the URL. Filter commits reset page atomically. Refresh closes details; deep-linkable details are a possible future enhancement.
 
 ## ADR-005: Validate untrusted boundaries with Zod
 
@@ -47,17 +47,17 @@ Status values are **Proposed** until implementation begins. These decisions opti
 
 ## ADR-007: Use server versions plus an unversioned optimistic overlay
 
-- **Status:** Proposed; **human review requested**
-- **Decision:** Confirmed server entities retain their actual version. A pending mutation records its base version and renders an overlay without inventing a version. Newer events update the confirmed base while the overlay remains visible. Mutation settlement selects the highest authoritative version.
+- **Status:** Accepted
+- **Decision:** Confirmed server entities retain their actual version. A pending mutation records its base version and renders an overlay without inventing a version. The mutation-owned field remains visible while pending; newer events update the confirmed base and unrelated fields remain visible underneath. Mutation settlement selects the highest authoritative version.
 - **Rationale:** Incrementing an optimistic version can wrongly reject legitimate events; immediately replacing optimistic status with realtime status creates flicker and weakens optimistic UX.
-- **Consequences:** Pending metadata is separate from cached domain data. The UI serializes mutations per shipment. Race behavior requires focused tests.
+- **Consequences:** Pending metadata is separate from cached domain data. Acknowledge and assign are serialized per shipment while different shipments may mutate concurrently. Race behavior requires focused tests.
 
 ## ADR-008: Roll back snapshots, then reapply newer accepted realtime truth
 
 - **Status:** Proposed
-- **Decision:** Snapshot all affected query entries before mutation. On failure restore them, remove the overlay, then apply the latest accepted event whose version exceeds the snapshot version.
+- **Decision:** Snapshot all affected query entries before mutation. Retain accepted partial events during the mutation in version order. On failure restore snapshots, remove the overlay, then replay newer accepted events. On a delayed successful response, use the complete response as its versioned causal base and replay all later event patches, never replacing a higher-version entity wholesale with the older response.
 - **Rationale:** A plain rollback would erase server updates received while the request was pending. A plain invalidation would leave a false optimistic state until the network responds.
-- **Consequences:** The mutation coordinator and realtime reconciler share a registry. A 409 also invalidates immediately.
+- **Consequences:** The mutation coordinator and realtime reconciler share a registry. Tests must cover delayed-success response, 409 conflict, and 503 rollback races. A 409 also invalidates immediately.
 
 ## ADR-009: Use entity version high-water marks and a bounded event-ID LRU
 
@@ -79,6 +79,13 @@ Status values are **Proposed** until implementation begins. These decisions opti
 - **Decision:** Patch visible entities immediately, then debounce list invalidation when filter membership/order/summary may change. On reconnect invalidate lists and the open detail; poll more frequently while disconnected.
 - **Rationale:** Partial events cannot reliably maintain every filtered cached page and aggregate, especially for invisible entities. Refetch makes the mock API the convergence authority.
 - **Consequences:** There can be a short interval where a row is patched but totals/order await refetch. Existing content remains usable during errors.
+
+## ADR-011A: Keep ordinary stale HTTP-response handling proportionate
+
+- **Status:** Accepted
+- **Decision:** Mock HTTP and realtime share one authoritative repository, which is updated before an event emits. Patch visible cached entities immediately; debounce list invalidation for membership/order/totals/summaries; invalidate relevant lists and the locally open detail on reconnect. Do not add a query-cache subscription framework solely to intercept every potential stale list/detail response unless implementation evidence requires it.
+- **Rationale:** Query cancellation and refetch convergence are sufficient for the assignment's controlled transport. Complexity should stay concentrated on the explicitly required mutation/event race.
+- **Consequences:** Mutation responses and realtime events remain version-aware. A production system with independently racing snapshot and event services may require versioned response envelopes and stronger query-boundary merging.
 
 ## ADR-012: Optimize measured hot paths, not every component
 
@@ -108,17 +115,37 @@ Status values are **Proposed** until implementation begins. These decisions opti
 - **Rationale:** The weighted criteria reward architecture, cache/realtime correctness, performance reasoning, and tests more than breadth or polish.
 - **Consequences:** Optional enhancements and production extensions are documented rather than half-built.
 
-## ADR-016: Summary cards are filter-scoped and details selection is shareable
+## ADR-016: Summary cards are filter-scoped
 
-- **Status:** Proposed; **human review requested**
-- **Decision:** Summary values describe the active filter set before pagination. `shipment=<id>` opens the detail sheet and survives refresh/share.
-- **Rationale:** Filter-scoped cards explain the visible result set, and shareable selection is consistent with URL-owned navigable state.
+- **Status:** Accepted
+- **Decision:** Summary values describe the active filter set before pagination.
+- **Rationale:** Filter-scoped cards explain the result set represented by the current controls.
 - **Consequences:** The list response includes summary aggregates. If product wants global cards, use a separate summary query/key and leave filter changes out of it.
 
 ## ADR-017: Realtime payloads are partial; mutation responses are complete
 
-- **Status:** Proposed; **human review requested**
+- **Status:** Accepted as an explicit mock-protocol assumption
 - **Decision:** Realtime messages patch listed fields only and share a monotonic per-shipment version sequence with mutations. Successful mutation responses return a complete authoritative detail entity.
-- **Rationale:** This matches the assignment's example payload and enables deterministic merging/settlement.
+- **Rationale:** The assignment does not fully specify this protocol. The assumption matches its example payload and enables deterministic merging/settlement.
 - **Consequences:** If the real protocol versions fields independently or sends full snapshots, reconciliation rules and schemas must change before implementation.
 
+## ADR-018: Exclude RESOLVED from the default board
+
+- **Status:** Accepted as an explicit assignment assumption
+- **Decision:** An absent status filter means `OPEN | ACKNOWLEDGED`. `RESOLVED` records remain available through explicit `status=RESOLVED`. Summary cards apply this default or the explicitly selected status before pagination.
+- **Rationale:** “Currently have operational exceptions” is best represented by active and acknowledged exceptions, while explicit history access remains useful.
+- **Consequences:** The absence of a status URL param has meaningful two-status semantics and must be encoded consistently in the URL codec, API handler, query key, and tests.
+
+## ADR-019: Serialize mutations per shipment and enforce eligibility
+
+- **Status:** Accepted as an explicit business-rule assumption
+- **Decision:** At most one acknowledge or assign mutation may be in flight for a shipment; both controls are disabled for that ID until settlement, while other shipments remain independent. Acknowledge is valid only for OPEN. Assign is valid for OPEN and ACKNOWLEDGED and invalid for RESOLVED.
+- **Rationale:** This avoids stacked optimistic overlays and supplies clear domain rules where the assignment is silent.
+- **Consequences:** UI controls and MSW handlers both enforce eligibility. Invalid direct requests return 409 `INVALID_STATE`.
+
+## ADR-020: Use Prettier for formatting
+
+- **Status:** Accepted
+- **Decision:** Add Prettier as a development dependency and configure `format`/`format:check` during Phase 0, not during this documentation-only revision.
+- **Rationale:** The assignment requires code formatting and the repository currently has no formatter.
+- **Consequences:** Prettier configuration and scripts are Phase 0 definition-of-done items.

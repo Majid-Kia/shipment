@@ -54,14 +54,14 @@ Feature UI never imports the mock database or MSW handlers. Components call feat
 
 ### 3.2 State ownership
 
-| State category | Owner | Examples | Persistence/lifecycle |
-|---|---|---|---|
-| Server state | TanStack Query | list pages, totals/summary, details, operators | Query cache; fetched/refetched from API |
-| URL state | React Router `searchParams` through a typed codec | search, exception type, priority, status, origin, assigned, page; selected shipment as `shipment` | Browser history; refresh/share safe |
-| Ephemeral UI state | Nearest component | search input draft during debounce, assign popover open state, confirm dialog, focus state | Component lifetime only |
-| Mock role | Small React context/provider | `VIEWER` or `OPERATOR` | In-memory; defaults to OPERATOR; role switch is demo-only |
-| Realtime connection state | `useSyncExternalStore`-backed event client | connecting/connected/disconnected/reconnecting, last event time | Event-client lifetime; only connection indicator subscribes |
-| Reconciliation state | Module-scoped `ReconciliationRegistry`, injected in tests | highest confirmed version per ID, bounded event-ID LRU, pending mutation records, deferred latest event | Non-rendering metadata; reset per app/test lifecycle |
+| State category            | Owner                                                     | Examples                                                                                                                                   | Persistence/lifecycle                                       |
+| ------------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------- |
+| Server state              | TanStack Query                                            | list pages, totals/summary, details, operators                                                                                             | Query cache; fetched/refetched from API                     |
+| URL state                 | React Router `searchParams` through a typed codec         | search, exception type, priority, status, origin, assigned, page                                                                           | Browser history; refresh/share safe                         |
+| Ephemeral UI state        | Nearest component                                         | selected shipment ID, details sheet open state, search input draft during debounce, assign popover open state, confirm dialog, focus state | Component lifetime only                                     |
+| Mock role                 | Small React context/provider                              | `VIEWER` or `OPERATOR`                                                                                                                     | In-memory; defaults to OPERATOR; role switch is demo-only   |
+| Realtime connection state | `useSyncExternalStore`-backed event client                | connecting/connected/disconnected/reconnecting, last event time                                                                            | Event-client lifetime; only connection indicator subscribes |
+| Reconciliation state      | Module-scoped `ReconciliationRegistry`, injected in tests | highest confirmed version per ID, bounded event-ID LRU, pending mutation records, ordered events received while a mutation is pending      | Non-rendering metadata; reset per app/test lifecycle        |
 
 No Redux or Zustand is needed. TanStack Query owns remote snapshots, Router owns navigable state, React owns small interaction state, and a narrow external registry owns protocol bookkeeping that should not cause renders.
 
@@ -151,13 +151,13 @@ interface Shipment {
   shipmentNumber: string;
   originPort: string;
   destinationPort: string;
-  eta: string;                    // ISO-8601 instant
+  eta: string; // ISO-8601 instant
   exceptionType: ExceptionType;
   priority: ShipmentPriority;
   status: ShipmentStatus;
   assignedTo: Operator | null;
-  version: number;                // positive, monotonically increasing per entity
-  updatedAt: string;              // ISO-8601 instant
+  version: number; // positive, monotonically increasing per entity
+  updatedAt: string; // ISO-8601 instant
 }
 
 interface StatusHistoryEntry {
@@ -194,7 +194,7 @@ interface ShipmentListParams {
   page: number;
   pageSize: 50;
   search?: string;
-  status?: ShipmentStatus;
+  status?: ShipmentStatus; // absent means active statuses: OPEN or ACKNOWLEDGED
   priority?: ShipmentPriority;
   exceptionType?: ExceptionType;
   originPort?: string;
@@ -213,9 +213,13 @@ interface ShipmentListResponse {
   page: number;
   pageSize: number;
   total: number;
-  summary: ShipmentSummary; // computed over the filtered result set before paging
+  summary: ShipmentSummary; // active filtered result set before paging
 }
 ```
+
+As an explicit assignment assumption, summary cards are filter-scoped: all summary values are computed over the active filtered result set before pagination.
+
+As an explicit assignment assumption, an absent `status` means the active-exception set `OPEN | ACKNOWLEDGED`; `RESOLVED` shipments are excluded from the default board. Explicit `status=RESOLVED` selects resolved shipments and makes them accessible. This interprets “currently have operational exceptions” without deleting historical/resolved records.
 
 List ordering is deterministic: `updatedAt desc`, then `id asc`. The API clamps no values; invalid inputs return 400. UI canonicalization prevents normal invalid requests. If a requested page becomes empty after data/filter changes, the UI replaces the URL with the last valid page and refetches.
 
@@ -249,6 +253,8 @@ interface AssignShipmentRequest {
 Both endpoints:
 
 - require mock role OPERATOR (403 otherwise);
+- enforce the assumed business rules: acknowledge only `OPEN`; assign only `OPEN` or `ACKNOWLEDGED`, never `RESOLVED`;
+- return 409 `INVALID_STATE` when the shipment status makes the requested action ineligible;
 - return 409 `VERSION_CONFLICT` when `expectedVersion` differs from the database version;
 - increment version and `updatedAt` exactly once on success;
 - return the authoritative full details entity;
@@ -261,8 +267,13 @@ Mutations for the same shipment are serialized in the UI (both actions disabled 
 
 ```ts
 type ErrorCode =
-  | "BAD_REQUEST" | "NOT_FOUND" | "FORBIDDEN"
-  | "VERSION_CONFLICT" | "SERVICE_UNAVAILABLE" | "UNKNOWN";
+  | "BAD_REQUEST"
+  | "NOT_FOUND"
+  | "FORBIDDEN"
+  | "INVALID_STATE"
+  | "VERSION_CONFLICT"
+  | "SERVICE_UNAVAILABLE"
+  | "UNKNOWN";
 
 interface ApiErrorBody {
   error: {
@@ -275,7 +286,13 @@ interface ApiErrorBody {
 }
 
 type AppError =
-  | { kind: "http"; status: number; code: ErrorCode; message: string; retryable: boolean }
+  | {
+      kind: "http";
+      status: number;
+      code: ErrorCode;
+      message: string;
+      retryable: boolean;
+    }
   | { kind: "network"; message: string; retryable: true }
   | { kind: "validation"; message: string; retryable: false }
   | { kind: "unknown"; message: string; retryable: false };
@@ -293,8 +310,14 @@ interface ShipmentUpdatedEvent {
   type: "SHIPMENT_UPDATED";
   timestamp: string;
   payload: Partial<
-    Pick<Shipment,
-      "eta" | "exceptionType" | "priority" | "status" | "assignedTo" | "updatedAt"
+    Pick<
+      Shipment,
+      | "eta"
+      | "exceptionType"
+      | "priority"
+      | "status"
+      | "assignedTo"
+      | "updatedAt"
     >
   >;
 }
@@ -302,11 +325,13 @@ interface ShipmentUpdatedEvent {
 
 Schema constraints require a nonempty ID/event ID, positive integer version, valid timestamp, known type, at least one payload field, and strict known payload keys. `updatedAt` defaults to the event timestamp if omitted. Unknown/invalid events are ignored and logged in development.
 
+The assignment does not fully define its mock protocol. This plan therefore explicitly assumes realtime payloads are partial patches and successful mutations plus realtime commits share one monotonically increasing server version sequence per shipment. The mock repository enforces that protocol.
+
 ## 6. Mock backend and 5,000-record strategy
 
 - Generate 5,000 deterministic shipments once from a seeded PRNG. Use stable port/operator dictionaries, IDs, versions, timestamps, statuses, and exception types so tests and demos are reproducible.
 - Store entities in `Map<string, ShipmentDetails>`. Keep arrays/maps for operators and IDs. At 5,000 rows, a linear scan for each list request is acceptable and realistically exercises server-side filtering without freezing the UI.
-- The list handler normalizes search once, filters the repository, computes summary counts in the same pass, sorts using deterministic ordering, then slices the requested page.
+- The list handler applies the implicit active-status predicate (`OPEN | ACKNOWLEDGED`) when `status` is absent, then normalizes search, applies other filters, computes filter-scoped summary counts in the same pass, sorts deterministically, and slices the requested page. Explicit `status=RESOLVED` bypasses the active-status default.
 - Search matches lowercase shipment number, origin, and destination. Exact enum/port/assignment filters are conjunctive.
 - Add 150–400 ms seeded latency to reads and mutations. Random mutation failure is evaluated only after authorization/body/version checks.
 - MSW runs in the browser and Node tests using the same handlers and database interface. Each test resets a smaller deterministic fixture database.
@@ -329,15 +354,15 @@ The text input has an ephemeral draft initialized from the URL. A 300 ms debounc
 
 ## 8. URL synchronization contract
 
-Canonical URL keys: `search`, `exceptionType`, `priority`, `status`, `origin`, `assigned`, `page`, and `shipment`.
+Canonical URL keys are exactly `search`, `exceptionType`, `priority`, `status`, `origin`, `assigned`, and `page`.
 
-- Defaults are omitted: empty filters, `page=1`, and no selected shipment. `/operations?page=1` is replaced with `/operations`.
+- Defaults are omitted: empty optional filters, implicit active status (`OPEN | ACKNOWLEDGED`), and `page=1`. `/operations?page=1` is replaced with `/operations`.
 - Parse with a Zod-backed codec. Unknown query keys are preserved only if the application deliberately owns them; for this assignment, unknown keys are removed during canonicalization.
 - Invalid enum/boolean/page values are replaced with defaults and the URL is canonicalized with history `replace`, preventing error loops.
-- `page` is a positive integer. `shipment` must be a nonempty ID-like string; a nonexistent ID may remain while the detail panel presents 404 and a close action.
+- `page` is a positive integer.
 - Any committed search/filter change resets page to 1 atomically in the same URL update.
 - Page changes use `push` so Back/Forward traverses pagination. Debounced search uses `replace` to avoid one history entry per keystroke; discrete filter changes use `push`.
-- Selecting a row sets `shipment=<id>` with `push`; closing removes it. Refresh/share reopens the same detail sheet.
+- Selecting a row stores its ID in `OperationsPage` local state and opens the details sheet; closing clears it. Refreshing or sharing preserves only assignment-required filters/pagination, not the selected shipment. Deep-linkable shipment details are a possible future enhancement, not an assignment requirement.
 - The query key is produced from the normalized semantic params, never raw `URLSearchParams`, so parameter ordering cannot fragment the cache.
 - If response `total` proves page exceeds `ceil(total/pageSize)`, replace with the last valid page (or 1 for zero results).
 
@@ -361,11 +386,11 @@ The normalized params object has stable field presence/order and includes page/p
 
 ### 9.2 Policies
 
-| Query | `staleTime` | `gcTime` | Retry | Refetch |
-|---|---:|---:|---|---|
-| List | 15 s | 5 min | max 2 for network/5xx, exponential capped at 2 s; never 4xx/validation | on focus/reconnect if stale; 60 s interval while connected, 15 s while realtime disconnected |
-| Detail | 30 s | 5 min | same | focus/reconnect; invalidate after reconnect |
-| Operators | 10 min | 30 min | 2 for retryable failures | focus only when stale |
+| Query     | `staleTime` | `gcTime` | Retry                                                                  | Refetch                                                                                      |
+| --------- | ----------: | -------: | ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| List      |        15 s |    5 min | max 2 for network/5xx, exponential capped at 2 s; never 4xx/validation | on focus/reconnect if stale; 60 s interval while connected, 15 s while realtime disconnected |
+| Detail    |        30 s |    5 min | same                                                                   | focus/reconnect; invalidate after reconnect                                                  |
+| Operators |      10 min |   30 min | 2 for retryable failures                                               | focus only when stale                                                                        |
 
 Global mutation retry is zero: automatic replay could duplicate intent, and the UI gives an explicit Retry action. Query functions consume TanStack Query's `AbortSignal`.
 
@@ -393,25 +418,26 @@ On mutate:
 2. Cancel all list queries under the list prefix and `detail(id)` so an older in-flight response cannot overwrite the optimistic state.
 3. Read the highest confirmed entity snapshot from detail/list cache and its `version = baseVersion`. Do not increment the entity's confirmed version optimistically.
 4. Capture every affected cache entry as `{ queryKey, previousData }`, including all cached list pages containing the ID and detail if present. This is the rollback snapshot.
-5. Register `{ mutationId, shipmentId, baseVersion, overlay, snapshot, deferredEvent: null }`.
+5. Register `{ mutationId, shipmentId, baseVersion, overlay, snapshot, pendingEvents: [] }`.
 6. Apply the overlay (`status: ACKNOWLEDGED` or `assignedTo: selectedOperator`) to every affected cache. Preserve `version: baseVersion`; expose pending state separately from the registry/mutation hook so a fake version is never compared with server events.
 7. Disable both row/detail actions for that shipment and send the request with `expectedVersion: baseVersion`.
 
 ### 10.2 Success
 
 1. Treat the response as authoritative only after Zod validation.
-2. Set confirmed snapshot/version to the response entity.
-3. Compare any deferred realtime event: apply it only if `event.version > response.version`; otherwise discard it.
-4. Remove the overlay/pending record.
-5. Patch all matching list/detail caches with the resulting confirmed entity while preserving detail-only fields where needed.
-6. Invalidate list queries in the background because status/assignment may change filter membership, ordering, and summary counts. Do not clear visible data.
-7. Show success feedback.
+2. Start with the complete mutation response as the committed server snapshot at `response.version`.
+3. Replay, in ascending version order, every accepted partial realtime event recorded during the mutation whose version is greater than `response.version`. This reconstructs the newest known authoritative entity without allowing an older HTTP response to erase later event fields.
+4. If the registry already holds a higher confirmed version, the final entity keeps that higher version; the mutation response never replaces it wholesale. The response supplies its causally earlier complete mutation result, then later event patches are reapplied.
+5. Remove the overlay/pending record.
+6. Patch all matching list/detail caches with the resulting highest-version confirmed entity while preserving detail-only fields where needed.
+7. Invalidate list queries in the background because status/assignment may change default/filter membership, ordering, and filter-scoped summary counts. Do not clear visible data.
+8. Show success feedback.
 
 ### 10.3 Failure
 
 1. Restore each recorded cache snapshot, but do not finish there.
 2. Remove the optimistic overlay.
-3. If a deferred valid realtime event exists and its version is greater than the restored confirmed version, apply it to the restored snapshot. This avoids rolling back over newer server truth.
+3. Replay all accepted realtime events recorded during the pending mutation, in ascending version order, when their versions exceed the restored confirmed version. This avoids rolling back over newer server truth.
 4. Patch all matching caches with that reconciled result.
 5. On 409, immediately invalidate detail and list queries; on other errors, normal background invalidation is optional but the rollback is immediate.
 6. Show a clear error toast with retry action. The UI no longer displays the optimistic result unless the deferred server event independently establishes it.
@@ -442,7 +468,7 @@ For each raw message:
 4. Find `confirmedVersion` in the reconciliation registry; if unknown, derive it from cached detail/list data. If neither exists, record the event's version as a high-water mark but do not fetch or render the entity.
 5. Reject `version <= confirmedVersion` as stale/out of order.
 6. If no mutation is pending, merge the partial payload into the confirmed entity in every cache where it exists, set version/timestamp, and update the high-water mark.
-7. If a mutation is pending for the ID, defer the highest-version event and recompute the rendered entity as `new confirmed payload + optimistic overlay`; see conflict rules below.
+7. If a mutation is pending for the ID, retain each accepted newer event in a small version-ordered list, apply its partial payload to the confirmed base, and recompute the rendered entity as `latest confirmed base + optimistic overlay`; see conflict rules below. Retaining the ordered patches permits causal replay when an older successful mutation response arrives later.
 8. If a realtime patch changes a field that controls the current list's membership/order/summary, patch the visible entity immediately if present and debounce a prefix invalidation (e.g. 250 ms). Refetch corrects moves/removals/counts without synchronous scans across 5,000 client records.
 
 Events for non-visible shipments do not force queries or add rows. They update only the high-water mark; reconnect/background list fetch obtains their current server representation. Connection status is rendered separately, so timer/status changes do not rerender the table.
@@ -451,20 +477,20 @@ Events for non-visible shipments do not force queries or add rows. They update o
 
 ### 12.1 Chosen rule
 
-Server versions are authoritative. A pending mutation is an unversioned visual overlay based on `baseVersion`. Newer realtime data advances the confirmed base but the overlay remains visible until mutation settlement. Settlement then chooses the highest authoritative version. This provides stable optimistic UX without allowing rollback to erase newer server facts.
+Server versions are authoritative. A pending mutation is an unversioned visual overlay based on `baseVersion`. The mutation-owned optimistic field remains visible until settlement. Newer realtime data advances the confirmed base, and changes to unrelated fields are visible underneath the overlay. Settlement reconstructs the entity from the mutation response or rollback snapshot plus later accepted event patches, and keeps the highest authoritative version.
 
-Only one mutation per shipment may be in flight. Realtime events are partial patches, so a deferred event is merged into the latest confirmed snapshot; when multiple arrive, accept them in increasing version order and retain the resulting latest confirmed snapshot.
+At most one mutation per shipment may be in flight: acknowledge and assign are both disabled for that shipment while either is pending. Different shipments may mutate concurrently. Realtime events are partial patches, so accepted events during a mutation are retained in increasing version order until settlement.
 
-### 12.2 Required race example: success
+### 12.2 Scenario A — mutation commits before its HTTP response arrives
 
-Initial:
+Initial client and server state:
 
 ```text
 confirmed: { version: 17, status: OPEN, priority: HIGH }
 rendered:  same
 ```
 
-User acknowledges:
+The user starts acknowledge with `expectedVersion=17`. The client renders the unversioned overlay:
 
 ```text
 pending:   { baseVersion: 17, overlay: { status: ACKNOWLEDGED } }
@@ -472,58 +498,69 @@ confirmed: { version: 17, status: OPEN, priority: HIGH }
 rendered:  { version: 17, status: ACKNOWLEDGED, priority: HIGH } + pending indicator
 ```
 
-Realtime event v18 `{ status: OPEN, priority: CRITICAL }` arrives:
+The server accepts the mutation first and commits acknowledge as v18, but delays its complete HTTP response. A subsequent server update commits v19 and emits a partial realtime event such as `{ priority: CRITICAL }`. The client receives v19 before the v18 response:
 
 ```text
-confirmed: { version: 18, status: OPEN, priority: CRITICAL }
-deferred high-water event: v18
-rendered:  { version: 18, status: ACKNOWLEDGED, priority: CRITICAL } + pending
+confirmed working base: { version: 19, status: OPEN, priority: CRITICAL }
+pending events: [v19 { priority: CRITICAL }]
+rendered: { version: 19, status: ACKNOWLEDGED, priority: CRITICAL } + pending
 ```
 
-The optimistic status overlay wins visually while pending, but the unrelated priority update is visible.
+The local confirmed base cannot yet infer the unseen v18 acknowledgement from a partial v19 payload, so the overlay continues to supply ACKNOWLEDGED visually.
 
-If mutation succeeds with authoritative v19 `{ status: ACKNOWLEDGED, priority: CRITICAL }`:
+The complete mutation response v18 then arrives. The client uses it as the causal predecessor and replays the stored v19 patch:
 
 ```text
-response v19 > event v18
-pending removed; event discarded as subsumed
-cache: { version: 19, status: ACKNOWLEDGED, priority: CRITICAL }
+base = mutation response v18 { status: ACKNOWLEDGED, priority: HIGH }
+replay v19 { priority: CRITICAL }
+remove overlay
+final cache = { version: 19, status: ACKNOWLEDGED, priority: CRITICAL }
 ```
 
-If the mutation response is v18 rather than v19, equal-version conflicting authoritative representations indicate a protocol inconsistency. Prefer the mutation's complete response for the immediate entity, invalidate detail/list, and log the inconsistency; refetch decides. Never merge two different payloads claiming the same version silently.
+The older v18 HTTP response must never regress version 19 or erase the v19 priority. A debounced list invalidation/refetch still converges membership, ordering, totals, and summaries.
 
-If a v20 event arrived after v18 but before the v19 response, v20 is retained and applied after response:
+### 12.3 Scenario B — realtime commits before mutation version check
+
+Initial state is v17. The user starts acknowledge with `expectedVersion=17`, and the overlay renders ACKNOWLEDGED. Before the mutation is accepted, another server/realtime update commits v18.
 
 ```text
-cache: merge(response v19, event payload v20), version 20
+confirmed after event: { version: 18, ...event patch }
+rendered while request pending: confirmed v18 + acknowledge overlay
 ```
 
-### 12.3 Required race example: failure
+The mutation endpoint now compares `expectedVersion=17` with current server version 18 and returns 409 `VERSION_CONFLICT`. The client:
 
-Use the same state through arrival of v18. If the acknowledge request fails with 503:
+1. Restores the v17 snapshot.
+2. Removes the optimistic overlay.
+3. Replays the accepted v18 event, preserving version 18 and its fields.
+4. Invalidates the relevant lists and detail query for authoritative refetch.
 
-1. Restore the v17 snapshot (`OPEN`, `HIGH`).
+The client never treats this mutation as successful and never regresses to v17.
+
+### 12.4 Scenario C — mutation fails while a newer realtime event arrived
+
+Initial state is v17 `OPEN/HIGH`. Optimistic acknowledge renders `ACKNOWLEDGED/HIGH`. Realtime v18 then updates the confirmed server entity to `OPEN/CRITICAL`; the pending overlay renders `ACKNOWLEDGED/CRITICAL`. The mutation fails with 503:
+
+1. Restore the v17 `OPEN/HIGH` snapshot.
 2. Remove the acknowledge overlay.
-3. Reapply the accepted v18 server event because 18 > 17.
-
-Final cache:
+3. Replay accepted event v18 because 18 > 17.
 
 ```text
-{ version: 18, status: OPEN, priority: CRITICAL }
+final cache = { version: 18, status: OPEN, priority: CRITICAL }
 ```
 
 The cache does **not** show ACKNOWLEDGED, so there is no false success, and it does **not** fall back to priority HIGH, so rollback does not lose realtime truth.
 
-If the v18 event instead said `{ status: RESOLVED }`, rendered status remains optimistically ACKNOWLEDGED only until settlement. On failure it becomes RESOLVED v18; on a successful mutation response v19 it becomes the server-returned status. On 409, remove the overlay, apply the latest accepted event, and refetch immediately.
-
-### 12.4 Other ordering cases
+### 12.5 Other ordering cases
 
 - Duplicate event ID: ignore even if delivered twice.
 - Different ID but same/lower version: ignore because entity version is already equal/higher.
 - v19 then v18: accept v19, reject v18.
 - Event v18 for uncached shipment: update high-water metadata only; do not inject it into the current page.
-- Late list response v17 after accepted v18: query cancellation reduces this race; a query-cache subscription/response merge rejects an entity whose version is below its registry high-water mark and schedules refetch rather than displaying regression.
-- Reconnect after missed events: invalidate visible list/detail; API snapshots replace cache only when their versions are at least the known confirmed versions. If the registry is ahead of an unexpectedly stale response, retain current data and refetch/log.
+- Ordinary list/detail HTTP reads and realtime use the same authoritative in-memory repository; the repository is mutated before an event emits. Query cancellation, immediate visible patches, and debounced invalidation/refetch are sufficient for this assignment. Do not add a query-cache subscription framework solely to intercept every possible stale read response unless implementation evidence proves it necessary.
+- Mutation responses and realtime events always use version-aware reconciliation because their race is explicit and user-visible.
+- Reconnect invalidates relevant lists and the currently open detail query so missed changes converge.
+- A production system whose HTTP snapshots and event stream race independently may require response envelopes with versions plus stronger version-aware response merging at the query boundary.
 
 ## 13. Rendering and performance
 
@@ -552,28 +589,32 @@ For high event rates, subscribe server-side only to the current filter/visible I
 ```ts
 const capabilities = {
   VIEWER: new Set(["shipment:view"]),
-  OPERATOR: new Set(["shipment:view", "shipment:acknowledge", "shipment:assign"]),
+  OPERATOR: new Set([
+    "shipment:view",
+    "shipment:acknowledge",
+    "shipment:assign",
+  ]),
 };
 ```
 
 - Both roles can load/search/filter lists and view details.
 - VIEWER sees action locations disabled or absent with explanatory text (“Operator role required”); tests assert no actionable acknowledge/assign controls.
-- OPERATOR can acknowledge only OPEN shipments and assign any non-RESOLVED shipment (assumption to review).
+- As explicit business-rule assumptions, OPERATOR can acknowledge only OPEN shipments; assign is allowed for OPEN and ACKNOWLEDGED and disabled for RESOLVED.
 - UI permission checks are UX only. MSW also rejects mutation requests for VIEWER to demonstrate the production boundary; a real backend must derive identity/claims from authenticated credentials and enforce policy independently.
 - A small role switch in the demo header is clearly labelled “Mock role”; it is not authentication.
 
 ## 15. Error and resilience behavior
 
-| Failure | Behavior | Recovery |
-|---|---|---|
-| Initial list failure | Board shell/filters remain; table area shows accessible error alert, no false empty state | Retry button invokes query refetch; automatic retry only for retryable errors |
-| Background list failure | Keep last successful rows/summary; nonblocking stale-data warning | Retry/refocus/reconnect |
-| Empty list | Explicit “No shipments match these filters” with clear-filters action | Change/clear URL filters |
-| Detail failure | Sheet stays open with its own error state; board remains usable | Retry details or close sheet |
-| Operators failure | Details still render; assignment control shows error/Retry | Refetch operators |
-| Mutation failure | Immediate reconciliation-aware rollback; clear toast with action and no false success | Manual Retry; 409 also refetches |
-| Realtime disconnect | Amber connection indicator; existing data/actions remain usable; no blocking overlay | Exponential reconnect; invalidate list/open detail on reconnect; faster polling while offline |
-| Invalid realtime/API payload | Ignore unsafe payload, log in development, retain last good cache | Refetch on next scheduled trigger |
+| Failure                      | Behavior                                                                                  | Recovery                                                                                      |
+| ---------------------------- | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Initial list failure         | Board shell/filters remain; table area shows accessible error alert, no false empty state | Retry button invokes query refetch; automatic retry only for retryable errors                 |
+| Background list failure      | Keep last successful rows/summary; nonblocking stale-data warning                         | Retry/refocus/reconnect                                                                       |
+| Empty list                   | Explicit “No shipments match these filters” with clear-filters action                     | Change/clear URL filters                                                                      |
+| Detail failure               | Sheet stays open with its own error state; board remains usable                           | Retry details or close sheet                                                                  |
+| Operators failure            | Details still render; assignment control shows error/Retry                                | Refetch operators                                                                             |
+| Mutation failure             | Immediate reconciliation-aware rollback; clear toast with action and no false success     | Manual Retry; 409 also refetches                                                              |
+| Realtime disconnect          | Amber connection indicator; existing data/actions remain usable; no blocking overlay      | Exponential reconnect; invalidate list/open detail on reconnect; faster polling while offline |
+| Invalid realtime/API payload | Ignore unsafe payload, log in development, retain last good cache                         | Refetch on next scheduled trigger                                                             |
 
 Alerts use `role="alert"` where appropriate; loading/disabled states have text/aria semantics, and focus returns from the sheet.
 
@@ -581,32 +622,34 @@ Alerts use `role="alert"` where appropriate; loading/disabled states have text/a
 
 Use Vitest, React Testing Library, `user-event`, jest-dom, Node MSW server, fake timers only for debounce/reconnect tests, and deterministic fixtures. Tests must assert behavior, not implementation details.
 
-| Requirement | Planned test |
-|---|---|
-| URL filter synchronization (required) | Render at a populated URL; controls and page reflect it. Change each filter/search; URL updates and page resets. Refresh by remounting from same history preserves state. |
-| URL invalid/default handling | Invalid enum, boolean, and page canonicalize to omitted defaults; defaults are omitted; discrete changes/back-forward work. |
-| Shared detail URL | `shipment=id` opens detail sheet; close removes it; 404 is isolated. |
-| Permission rendering (required) | VIEWER cannot invoke acknowledge/assign and sees explanation; OPERATOR sees valid actions. Direct VIEWER mutation returns 403 in handler test. |
-| Duplicate/out-of-order rejection (required) | Pure reconciler accepts v18 once, rejects same event ID, rejects v17/v18 after high-water v18, and leaves cached entity/reference unchanged. |
-| Existing realtime update | Valid v18 patches only matching visible row/detail and preserves other object references. |
-| Non-visible event | Event advances metadata but does not add a row or trigger detail fetch. |
-| Disconnect/reconnect | Status changes, board remains usable, reconnect invalidates list/open detail, timers clean up. |
-| List states | Skeleton on initial load, empty state for zero total, error plus Retry on forced failure, stale data retained on background error. |
-| Details requirements | Sheet renders shipment/exception/assignment/history and exactly newest five events; detail loading/error isolated. |
-| Search/filter correctness | MSW repository filters all required fields before paging, returns deterministic totals/summary/order. |
-| Pagination/performance boundary | Handler returns max 50 rows from 5,000; page key differs; page overflow canonicalizes. |
-| Acknowledge optimistic success | Status changes immediately without fake version; authoritative response replaces it and lists invalidate. |
-| Assign optimistic success | Operator changes immediately in all cached representations, then server entity settles. |
-| Mutation failure rollback | Exact cache snapshots restore; toast appears; pending state clears. |
-| Required integration flow | Load → apply filter → open detail → acknowledge → forced API failure → see optimistic state while promise held → reject → verify row/detail rollback and error. |
-| Mutation/realtime success race | Base v17, optimistic acknowledge, event v18, success v19: pending overlay plus event fields while waiting, then authoritative v19. |
-| Mutation/realtime failure race | Same sequence with failure: rollback v17 then reapply v18; final cache is OPEN/CRITICAL v18. |
-| Multiple/out-of-order race events | v19 then v18 during mutation retains v19; later success v20 wins or success v18 is followed by retained v19 according to version. |
-| Mutation 409 | Overlay removed, newer event preserved, query invalidated/refetched. |
-| API/event validation | Malformed response/event produces typed validation handling and no cache corruption. |
-| Query policy | Unit test retry predicate: network/5xx bounded retry; 4xx/validation no retry; mutations no retry. |
-| Cache relationship | Patch helper updates every containing list/detail cache and preserves unrelated references. |
-| Summary cards/table columns | Component test asserts four required summaries and all nine required column headings. |
+| Requirement                                 | Planned test                                                                                                                                                                                            |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| URL filter synchronization (required)       | Render at a populated URL; controls and page reflect it. Change each filter/search; URL updates and page resets. Refresh by remounting from same history preserves state.                               |
+| URL invalid/default handling                | Invalid enum, boolean, and page canonicalize to omitted defaults; defaults are omitted; discrete changes/back-forward work.                                                                             |
+| Ephemeral details selection                 | Clicking a row opens local-state sheet; closing clears selection; URL remains unchanged; detail 404 is isolated.                                                                                        |
+| Permission rendering (required)             | VIEWER cannot invoke acknowledge/assign and sees explanation; OPERATOR sees valid actions. Direct VIEWER mutation returns 403 in handler test.                                                          |
+| Duplicate/out-of-order rejection (required) | Pure reconciler accepts v18 once, rejects same event ID, rejects v17/v18 after high-water v18, and leaves cached entity/reference unchanged.                                                            |
+| Existing realtime update                    | Valid v18 patches only matching visible row/detail and preserves other object references.                                                                                                               |
+| Non-visible event                           | Event advances metadata but does not add a row or trigger detail fetch.                                                                                                                                 |
+| Disconnect/reconnect                        | Status changes, board remains usable, reconnect invalidates list/open detail, timers clean up.                                                                                                          |
+| List states                                 | Skeleton on initial load, empty state for zero total, error plus Retry on forced failure, stale data retained on background error.                                                                      |
+| Details requirements                        | Sheet renders shipment/exception/assignment/history and exactly newest five events; detail loading/error isolated.                                                                                      |
+| Search/filter correctness                   | MSW repository defaults to OPEN/ACKNOWLEDGED, exposes RESOLVED only when explicitly filtered, applies all required filters before paging, and returns deterministic filter-scoped totals/summary/order. |
+| Pagination/performance boundary             | Handler returns max 50 rows from 5,000; page key differs; page overflow canonicalizes.                                                                                                                  |
+| Acknowledge optimistic success              | Status changes immediately without fake version; authoritative response replaces it and lists invalidate.                                                                                               |
+| Assign optimistic success                   | Operator changes immediately in all cached representations, then server entity settles.                                                                                                                 |
+| Mutation failure rollback                   | Exact cache snapshots restore; toast appears; pending state clears.                                                                                                                                     |
+| Required integration flow                   | Load → apply filter → open detail → acknowledge → forced API failure → see optimistic state while promise held → reject → verify row/detail rollback and error.                                         |
+| Scenario A: delayed successful response     | Start v17; server commits mutation v18; partial realtime v19 arrives first; response v18 arrives later. Assert causal replay produces v19 with mutation result plus v19 fields and never regresses.     |
+| Scenario B: realtime wins version check     | Start v17; realtime commits v18 before mutation check; endpoint returns 409 for expectedVersion 17. Assert overlay removal, v18 preservation, and list/detail invalidation/refetch.                     |
+| Scenario C: failure with newer event        | Start v17 OPEN/HIGH; overlay ACKNOWLEDGED; v18 OPEN/CRITICAL arrives; mutation returns 503. Assert final cache is v18 OPEN/CRITICAL, not v17 or optimistic state.                                       |
+| Mutation serialization                      | While either action is pending for shipment A, both actions on A are disabled; shipment B remains independently mutable.                                                                                |
+| Mutation eligibility                        | Acknowledge enabled only for OPEN; assign enabled for OPEN/ACKNOWLEDGED and disabled for RESOLVED; MSW rejects invalid direct requests.                                                                 |
+| Multiple/out-of-order race events           | Ordered pending-event replay retains the highest version and rejects duplicate/lower versions without losing intervening partial patches.                                                               |
+| API/event validation                        | Malformed response/event produces typed validation handling and no cache corruption.                                                                                                                    |
+| Query policy                                | Unit test retry predicate: network/5xx bounded retry; 4xx/validation no retry; mutations no retry.                                                                                                      |
+| Cache relationship                          | Patch helper updates every containing list/detail cache and preserves unrelated references.                                                                                                             |
+| Summary cards/table columns                 | Component test asserts four required summaries and all nine required column headings.                                                                                                                   |
 
 Three minimum tests are not treated as the goal; the high-risk reconciliation helpers receive focused unit coverage, while one integration test proves composition.
 
@@ -614,7 +657,7 @@ Three minimum tests are not treated as the goal; the high-risk reconciliation he
 
 ### Phase 0 — Tooling and executable shell (1–1.5 h)
 
-Work: add router/query providers, Vitest jsdom/setup, MSW worker/server bootstrap, `test`, `test:watch`, `typecheck`, `format`, and `format:check` scripts; configure formatter (Prettier as a dev-only tool or document an existing formatter choice), strengthen TS strictness and query lint rules.
+Work: add Prettier as a dev dependency and configure it; add router/query providers, Vitest jsdom/setup, MSW worker/server bootstrap, `test`, `test:watch`, `typecheck`, `format`, and `format:check` scripts; strengthen TS strictness and query lint rules. Prettier is added only when Phase 0 implementation starts, not during architecture planning.
 
 Definition of done: empty `/operations` route mounts under production and test providers; `npm run build`, lint, typecheck, format check, and one smoke test pass.
 
@@ -624,7 +667,7 @@ Review independence: infrastructure-only change, no polished UI required.
 
 Work: domain/contracts/Zod schemas, deterministic factory/database, list/detail/operators/mutation handlers, typed fetch client, test scenario controls.
 
-Definition of done: handlers expose 5,000 records, required filters/paging/summary/details/operators, authorization/version checks, and controllable 20% mutation failure.
+Definition of done: handlers expose 5,000 records, default OPEN/ACKNOWLEDGED results, explicit RESOLVED filtering, required filters/paging/filter-scoped summary/details/operators, eligibility/authorization/version checks, and controllable 20% mutation failure.
 
 Validation: repository/handler tests for filters, paging, contracts, 403/404/409/503, and five-event limit.
 
@@ -638,9 +681,9 @@ Validation: URL, invalid/default, list state, query-key, and filtering tests.
 
 ### Phase 3 — Table and details vertical slice (2–2.5 h)
 
-Work: typed TanStack Table columns, row component, selection in URL, details sheet/query, status history/five events, operators query, permission provider/gates.
+Work: typed TanStack Table columns, row component, local selected-shipment/sheet state, details query, status history/five events, operators query, permission provider/gates.
 
-Definition of done: all nine columns display, selectable row opens refresh-safe details, roles produce correct controls.
+Definition of done: all nine columns display, selecting a row opens details without changing the URL, closing clears local selection, and roles/eligibility rules produce correct controls.
 
 Validation: details, permission, 404 isolation, and required content tests; keyboard/focus smoke check.
 
@@ -656,9 +699,9 @@ Validation: cache helper tests, acknowledge/assign success/failure, 409, and req
 
 Work: transport interface/manual test source/mock timers, event schemas, LRU/high-water registry, pure reconciliation, QueryClient bridge, disconnect/reconnect, batching, mutation deferral rules.
 
-Definition of done: valid updates render; duplicate/stale/non-visible events behave as specified; reconnect converges; v17/v18 success and failure races produce documented cache states.
+Definition of done: valid updates render; duplicate/stale/non-visible events behave as specified; reconnect converges; Scenarios A, B, and C produce their documented cache states.
 
-Validation: pure unit matrix plus integration tests for visible patch, non-visible event, reconnect, success race, failure race, and reference preservation.
+Validation: pure unit matrix plus integration tests for visible patch, non-visible event, reconnect, all three race scenarios, ordered partial-event replay, and reference preservation.
 
 ### Phase 6 — Hardening, profiling, documentation (2–3 h)
 
@@ -703,94 +746,105 @@ Estimated total: 14.5–18.5 hours, leaving up to 1.5 hours of contingency insid
 
 ## 19. Requirement traceability checklist
 
-| Assignment requirement | Planned implementation | Verification |
-|---|---|---|
-| Single-page operations dashboard | `/operations` route/layout | Board component test |
-| Four suggested summary cards | Filtered response `summary` + cards | Heading/value test |
-| Nine minimum table columns | Typed TanStack Table definitions | Column test |
-| Details drawer/side panel | URL-driven shadcn Sheet | Detail test |
-| At least 5,000 shipments | Seeded MSW repository | Handler count test |
-| Responsive list/filter/realtime/detail/update | 50-row server page, abort/debounce, immutable targeted patch, batching | Boundary tests + profiler/manual check |
-| Text search | URL codec + API search | URL and handler tests |
-| Exception filter | `exceptionType` | URL and handler tests |
-| Priority filter | `priority` | URL and handler tests |
-| Status filter | `status` | URL and handler tests |
-| Origin filter | `origin` URL / `originPort` API | URL and handler tests |
-| Assigned/unassigned filter | tri-state `assigned` | URL and handler tests |
-| Refresh/share preserves filters | Router-owned canonical params | Remount/history test |
-| Structured query keys | `operationsKeys` factory | Unit test/review |
-| Loading/empty/error states | Per-query accessible states | Component tests |
-| Retry/cache policy | Typed predicates and documented stale/gc times | Predicate tests/config review |
-| Background refetch | focus/reconnect/interval policies | Config and reconnect test |
-| Server/local state separation | Query/URL/component/registry ownership | Architecture review |
-| Optimistic acknowledge | overlay + versioned request | Success/failure tests |
-| Optimistic assign | overlay + versioned request | Success/failure tests |
-| ~20% mutation failure | Seeded MSW branch | Handler distribution/specific forced tests |
-| Rollback, message, consistent cache | keyed snapshots + deferred-event reapply + toast | Integration/race tests |
-| Periodic random realtime updates | mock event source updates repository | Fake-timer/source test |
-| Existing shipment updates | shared cache patcher | Realtime component test |
-| Duplicate events | event-ID LRU | Reconciler unit test |
-| Out-of-order/stale versions | per-ID high-water version | Reconciler unit test |
-| Non-visible shipment events | metadata only, no forced fetch | Unit/integration test |
-| Connection loss/reconnection | status store, backoff, reconnect invalidation | Fake-timer test |
-| Avoid whole-table rerender | reference-preserving patches + memoized hot row | Reference test + profiler |
-| Mutation/realtime conflict | server-version overlay algorithm | v17/v18 success/failure tests |
-| Shipment information | `ShipmentDetails` sheet | Detail content test |
-| Exception details | detail-only exception object | Detail content test |
-| Current assignment | detail entity/operator | Detail content test |
-| Status history | detail history | Detail content test |
-| Five recent events | API capped newest-first | Handler/component test |
-| VIEWER capabilities | permission map and gates | Permission test |
-| OPERATOR capabilities | permission map and mutations | Permission/mutation test |
-| Backend authorization caveat | MSW 403 + README production explanation | Handler test/docs review |
-| Required URL test | focused Router test | Test suite |
-| Required permission test | component/provider test | Test suite |
-| Required event rejection test | pure reconciler test | Test suite |
-| Required integration flow | forced deferred 503 flow | Test suite |
-| React/TS/Vite/router/ESLint/format/tests/mock | existing stack + Phase 0 scripts/config | CI-like command run |
-| README setup/test/architecture/limitations/time/incomplete/tradeoffs | Phase 6 README replacement | Documentation checklist |
-| All ten README questions | Dedicated answer section | Documentation checklist |
-| AI usage disclosure | Brief README note | Documentation checklist |
-| Out-of-scope exclusions | Not implemented | Scope review |
+| Assignment requirement                                               | Planned implementation                                                        | Verification                               |
+| -------------------------------------------------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------ |
+| Single-page operations dashboard                                     | `/operations` route/layout                                                    | Board component test                       |
+| Four suggested summary cards                                         | Filtered response `summary` + cards                                           | Heading/value test                         |
+| Summaries are filter-scoped                                          | Compute after active/default filters and before page slice                    | Repository + card test                     |
+| Nine minimum table columns                                           | Typed TanStack Table definitions                                              | Column test                                |
+| Details drawer/side panel                                            | Locally selected shipment drives shadcn Sheet                                 | Detail/local-state test                    |
+| At least 5,000 shipments                                             | Seeded MSW repository                                                         | Handler count test                         |
+| Responsive list/filter/realtime/detail/update                        | 50-row server page, abort/debounce, immutable targeted patch, batching        | Boundary tests + profiler/manual check     |
+| Text search                                                          | URL codec + API search                                                        | URL and handler tests                      |
+| Exception filter                                                     | `exceptionType`                                                               | URL and handler tests                      |
+| Priority filter                                                      | `priority`                                                                    | URL and handler tests                      |
+| Status filter                                                        | `status`                                                                      | URL and handler tests                      |
+| Default excludes RESOLVED                                            | Absent status means OPEN/ACKNOWLEDGED; explicit RESOLVED remains accessible   | Handler and URL-default tests              |
+| Origin filter                                                        | `origin` URL / `originPort` API                                               | URL and handler tests                      |
+| Assigned/unassigned filter                                           | tri-state `assigned`                                                          | URL and handler tests                      |
+| Refresh/share preserves filters                                      | Router-owned canonical params                                                 | Remount/history test                       |
+| Details selection is not URL state                                   | Local selected ID/sheet state; future deep link documented only               | URL-unchanged component test               |
+| Structured query keys                                                | `operationsKeys` factory                                                      | Unit test/review                           |
+| Loading/empty/error states                                           | Per-query accessible states                                                   | Component tests                            |
+| Retry/cache policy                                                   | Typed predicates and documented stale/gc times                                | Predicate tests/config review              |
+| Background refetch                                                   | focus/reconnect/interval policies                                             | Config and reconnect test                  |
+| Server/local state separation                                        | Query/URL/component/registry ownership                                        | Architecture review                        |
+| Optimistic acknowledge                                               | overlay + versioned request                                                   | Success/failure tests                      |
+| Optimistic assign                                                    | overlay + versioned request                                                   | Success/failure tests                      |
+| One mutation per shipment                                            | Per-ID pending registry disables acknowledge and assign; other IDs unaffected | Concurrency/serialization test             |
+| Action eligibility                                                   | OPEN-only acknowledge; OPEN/ACKNOWLEDGED assign; RESOLVED assign disabled     | UI + handler tests                         |
+| ~20% mutation failure                                                | Seeded MSW branch                                                             | Handler distribution/specific forced tests |
+| Rollback, message, consistent cache                                  | keyed snapshots + deferred-event reapply + toast                              | Integration/race tests                     |
+| Periodic random realtime updates                                     | mock event source updates repository                                          | Fake-timer/source test                     |
+| Existing shipment updates                                            | shared cache patcher                                                          | Realtime component test                    |
+| Duplicate events                                                     | event-ID LRU                                                                  | Reconciler unit test                       |
+| Out-of-order/stale versions                                          | per-ID high-water version                                                     | Reconciler unit test                       |
+| Non-visible shipment events                                          | metadata only, no forced fetch                                                | Unit/integration test                      |
+| Connection loss/reconnection                                         | status store, backoff, reconnect invalidation                                 | Fake-timer test                            |
+| Avoid whole-table rerender                                           | reference-preserving patches + memoized hot row                               | Reference test + profiler                  |
+| Mutation/realtime conflict                                           | server-version overlay plus ordered causal replay                             | Scenarios A/B/C tests                      |
+| Shipment information                                                 | `ShipmentDetails` sheet                                                       | Detail content test                        |
+| Exception details                                                    | detail-only exception object                                                  | Detail content test                        |
+| Current assignment                                                   | detail entity/operator                                                        | Detail content test                        |
+| Status history                                                       | detail history                                                                | Detail content test                        |
+| Five recent events                                                   | API capped newest-first                                                       | Handler/component test                     |
+| VIEWER capabilities                                                  | permission map and gates                                                      | Permission test                            |
+| OPERATOR capabilities                                                | permission map and mutations                                                  | Permission/mutation test                   |
+| Backend authorization caveat                                         | MSW 403 + README production explanation                                       | Handler test/docs review                   |
+| Required URL test                                                    | focused Router test                                                           | Test suite                                 |
+| Required permission test                                             | component/provider test                                                       | Test suite                                 |
+| Required event rejection test                                        | pure reconciler test                                                          | Test suite                                 |
+| Required integration flow                                            | forced deferred 503 flow                                                      | Test suite                                 |
+| React/TS/Vite/router/ESLint/format/tests/mock                        | existing stack + Phase 0 scripts/config                                       | CI-like command run                        |
+| README setup/test/architecture/limitations/time/incomplete/tradeoffs | Phase 6 README replacement                                                    | Documentation checklist                    |
+| All ten README questions                                             | Dedicated answer section                                                      | Documentation checklist                    |
+| AI usage disclosure                                                  | Brief README note                                                             | Documentation checklist                    |
+| Out-of-scope exclusions                                              | Not implemented                                                               | Scope review                               |
 
 ## 20. Ambiguities, assumptions, risks, and human review gates
 
 ### Ambiguities found
 
-- Whether summary cards describe the filtered result set or all shipments.
-- Whether `RESOLVED` shipments remain “current exceptions” and appear by default.
-- Search fields, sorting behavior, default role, mutation version semantics, and assignment eligibility are unspecified.
-- Whether realtime event payloads are full entities or partial patches, and whether event versions share the mutation endpoint's sequence.
-- Whether selected detail should be URL state; only filters are explicitly required.
-- Whether a realtime event should override an optimistic field visually before mutation settlement.
+- The assignment did not specify whether summaries are global or filter-scoped; human review resolved this to filter-scoped.
+- The assignment did not define default treatment of `RESOLVED`; human review resolved this to exclude it unless explicitly filtered.
+- The assignment does not fully define realtime payload completeness or version-sequence relationship; the reviewed mock protocol assumption is partial payloads and one monotonic sequence.
+- Search fields, sorting behavior, and the default mock role remain unspecified.
+- The assignment requires filter URL state but does not require detail deep links; human review resolved selection to ephemeral local state.
 - The provided document contains encoding artifacts for arrows, but intended flows are clear.
 
 ### Assumptions made
 
 - Summary cards reflect the active filters before pagination.
-- Default view includes OPEN, ACKNOWLEDGED, and RESOLVED because no default status restriction is stated.
+- The default board represents current exceptions as OPEN and ACKNOWLEDGED; RESOLVED is available only through explicit `status=RESOLVED`.
 - Search covers shipment number, origin, and destination; default order is latest update first.
-- Event and mutation versions form one monotonic per-shipment server sequence.
+- The assumed mock protocol gives mutation and realtime commits one monotonic per-shipment server version sequence.
 - Realtime payloads are partial patches; mutation responses are complete authoritative details.
-- OPERATOR may acknowledge only OPEN and assign any non-RESOLVED shipment.
-- Selected shipment belongs in the URL for refresh/share quality.
+- Acknowledge is allowed only for OPEN. Assign is allowed for OPEN and ACKNOWLEDGED and disabled for RESOLVED.
+- At most one mutation is pending per shipment; different shipments may mutate concurrently.
+- Optimistic mutation fields remain as an unversioned overlay until settlement while unrelated newer realtime fields appear underneath.
+- Selected shipment ID and sheet open state are ephemeral local UI state and do not alter the URL.
 - MSW and the event source share one repository, so refetch can converge.
+- Prettier is the formatter and will be added/configured in Phase 0.
 
 ### Highest-risk technical areas
 
 1. Correct rollback when newer realtime data arrives during a pending mutation.
 2. Keeping multiple filtered list caches, detail cache, summaries, and membership consistent.
-3. Preventing stale query responses from regressing a version already observed via realtime.
+3. Correctly replaying partial events over a delayed older mutation response without regressing version or fields.
 4. Making the simulator deterministic and cleanup-safe under Strict Mode and tests.
 5. Completing robust integration tests without consuming the UI-polish time budget.
 
-### Human decisions required before implementation
+### Remaining decisions before or during implementation
 
-- Confirm whether summaries are global or filter-scoped.
-- Confirm whether RESOLVED rows are included by default and how long they remain on the board.
-- Approve the “optimistic overlay remains visible while newer server fields merge underneath” conflict UX.
-- Confirm a single in-flight mutation per shipment is acceptable.
-- Confirm partial realtime payload and globally monotonic per-entity version assumptions.
-- Confirm assignment/acknowledgement eligibility and whether details selection should be shareable URL state.
-- Decide whether adding Prettier as a dev dependency is acceptable or whether another formatter is preferred.
+The architecture decisions requested in human review are resolved. The following lower-impact choices remain and can use the documented defaults unless a reviewer prefers otherwise:
 
+- Confirm that search matching shipment number, origin, and destination is sufficient.
+- Confirm latest-updated-first as the default sort.
+- Confirm OPERATOR as the initial demo role (the role switch still exposes VIEWER).
+- Decide how long resolved records remain in the mock repository; this does not affect their explicit filter accessibility.
+
+None of these blocks Phase 0 tooling implementation.
+
+### Implementation readiness
+
+The reviewed architecture is ready for Phase 0. Phase 0 is limited to tooling and executable-shell setup, including adding Prettier; product feature work begins only in later independently reviewable phases.

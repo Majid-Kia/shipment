@@ -1,5 +1,14 @@
+import { RouterProvider } from "react-router";
+
+import { AppProviders } from "@/app/providers";
+import { browserRouter } from "@/app/router";
+
 function App() {
-  return <div></div>;
+  return (
+    <AppProviders>
+      <RouterProvider router={browserRouter} />
+    </AppProviders>
+  );
 }
 
 export default App;
