@@ -1,0 +1,119 @@
+# Project Instructions
+
+## Source of truth
+
+Before planning or implementing any feature, read:
+
+- docs/assignment/spec.md
+- docs/architecture/decisions.md
+- docs/architecture/implementation-plan.md
+
+The assignment requirements are the primary source of truth.
+
+Do not add features that are explicitly out of scope unless required to satisfy another requirement.
+
+## Engineering principles
+
+- Use React and TypeScript with strict typing.
+- Avoid `any` unless there is a documented justification.
+- Prefer simple, explicit solutions over unnecessary abstractions.
+- Follow separation of concerns.
+- Follow clean code rules.
+- Follow SOLID principles.
+- Keep server state, URL state, realtime state, and ephemeral UI state clearly separated.
+- Do not introduce Redux, Zustand, Axios, or additional dependencies unless there is a demonstrated need.
+- Avoid premature memoization with `useMemo`, `useCallback`, or `React.memo`.
+- Optimize only when there is a concrete rendering or computational concern.
+- Maintainability and stability
+
+## Architecture
+
+Prefer feature/domain-oriented organization.
+
+Shipment-specific code belongs under:
+
+src/features/shipments/
+
+Application-level providers and routing belong under:
+
+src/app/
+
+Shared generic UI and utilities belong under:
+
+src/shared/
+
+Mock API infrastructure belongs under:
+
+src/mocks/
+
+Do not place business logic directly in page components.
+
+## Server state
+
+Use TanStack Query for server state.
+
+Use structured query-key factories.
+
+Mutations must correctly support:
+
+- optimistic updates
+- rollback on failure
+- cache consistency
+- reconciliation with realtime events
+
+## URL state
+
+Shipment filters and pagination must be synchronized with URL search parameters.
+
+The URL must be the source of truth for shareable filter state.
+
+## Realtime
+
+Realtime reconciliation must explicitly handle:
+
+- duplicate events
+- out-of-order events
+- stale versions
+- invisible/non-cached shipments
+- connection loss
+- reconnection
+- conflicts with pending mutations
+
+Keep reconciliation logic isolated and testable.
+
+## Testing
+
+Use:
+
+- Vitest
+- React Testing Library
+- MSW
+
+Required scenarios from the assignment must be covered.
+
+Prefer testing observable behavior over implementation details.
+
+## Validation
+
+Before considering a phase complete, run:
+
+- npm run lint
+- npm run test
+- npm run build
+
+Fix failures before proceeding.
+
+## Workflow
+
+Do not implement the entire assignment in one uncontrolled pass.
+
+For each implementation phase:
+
+1. Inspect the relevant existing code.
+2. State the intended changes.
+3. Implement only that phase.
+4. Add or update tests.
+5. Run validation commands.
+6. Summarize changed files, decisions, and remaining risks.
+
+Do not silently change architectural decisions documented in `docs/architecture/decisions.md`.
