@@ -6,17 +6,8 @@ import type {
   ShipmentStatus,
 } from "@/domain/shipment";
 import { EXCEPTION_TYPES, SHIPMENT_PRIORITIES } from "@/domain/shipment";
+import { PORT_CODES } from "@/domain/port";
 
-const PORTS = [
-  "IRBND",
-  "CNSHA",
-  "NLRTM",
-  "SGSIN",
-  "AEJEA",
-  "DEHAM",
-  "USLAX",
-  "BRSSZ",
-] as const;
 const BASE_TIME = Date.parse("2026-07-21T12:00:00.000Z");
 
 function createRandom(seed: number) {
@@ -57,8 +48,8 @@ export function createShipments(
     const exceptionType = EXCEPTION_TYPES[
       Math.floor(random() * EXCEPTION_TYPES.length)
     ] as ExceptionType;
-    const originPort = PORTS[index % PORTS.length];
-    const destinationPort = PORTS[(index * 3 + 1) % PORTS.length];
+    const originPort = PORT_CODES[index % PORT_CODES.length];
+    const destinationPort = PORT_CODES[(index * 3 + 1) % PORT_CODES.length];
     const assignedTo =
       index % 3 === 0 ? null : operators[index % operators.length];
     const updatedAt = new Date(BASE_TIME - index * 60_000).toISOString();

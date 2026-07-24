@@ -157,3 +157,65 @@ The user requested this work as Phase 2. It implements the approved contract/moc
 - Repository reset regenerates 5,000 records after each test. Current suite time is acceptable, but fixture reset strategy may need optimization as the suite grows.
 - Realtime commits do not exist yet; the repository is ready to be shared by that later transport.
 - TanStack Query policies and hooks, URL state, list/detail cache relationships, optimistic updates, and UI states remain intentionally unimplemented.
+
+## Read-only operations board phase — completed 2026-07-23
+
+This phase implements only summary cards, filters, URL synchronization, the paginated list table, and list loading/empty/error states. Shipment details, role UI, mutations, optimistic cache changes, and realtime remain intentionally unimplemented.
+
+### Completed work
+
+- Added a typed operations URL codec for exactly `search`, `exceptionType`, `priority`, `status`, `origin`, `assigned`, and `page`.
+- Made parsed/canonical URL search parameters the source of truth for committed filters and pagination.
+- Added canonicalization that removes unknown keys, invalid values, `page=1`, and other defaults with history replacement.
+- Preserved the reviewed absent-status semantics: no `status` parameter means OPEN and ACKNOWLEDGED.
+- Added atomic page reset to page 1 for every committed filter/search change.
+- Added a local search draft with a 300 ms debounced URL commit; Enter commits immediately. Search commits replace history while discrete filter changes and page navigation push history.
+- Added a TanStack Query list hook using the existing API client, normalized query keys, abort signals, previous-data placeholders, and background polling.
+- Added four filter-scoped summary cards.
+- Added all required filter controls: text, exception type, priority, status, origin, and assigned/unassigned.
+- Added a nine-column TanStack Table using manual server pagination and the fixed 50-row page size.
+- Added previous/next pagination, total result count, and automatic canonical correction when the requested page exceeds the available page count.
+- Added an initial skeleton, explicit empty state with clear-filters action, initial error state with retry, background error warning, and nonblocking fetching state.
+
+### Changed files
+
+- `src/features/operations/OperationsPage.tsx`
+- `src/features/operations/operations-search-params.ts`
+- `src/features/operations/operations-queries.ts`
+- `src/features/operations/components/SummaryCards.tsx`
+- `src/features/operations/components/ShipmentFilters.tsx`
+- `src/features/operations/components/ShipmentTable.tsx`
+- `src/features/operations/components/Pagination.tsx`
+- `src/features/operations/OperationsPage.test.tsx`
+- `docs/progress.md`
+
+### Test coverage
+
+- Hydration of every shareable filter and page from a populated URL.
+- Discrete filter changes written to the URL while preserving other filters and resetting page.
+- Debounced text search committed to the URL with page reset and matching table data.
+- Invalid, default, and unknown query parameters canonicalized out of the URL.
+- Empty-result state for a search with no matches.
+- Actionable initial error state for a failed shipment list request.
+- Existing API/schema/query-key/foundation tests continue to pass.
+
+### Deviations from the implementation plan
+
+- Filter selects use accessible native `<select>` controls styled with Tailwind instead of the existing shadcn/Base UI Select. This avoids portal/value complexity for simple single-value filters while keeping shadcn components for cards, table, buttons, alerts, input, and skeletons.
+- The mock API still has no artificial latency. Loading behavior is implemented and the error test uses MSW, but a dedicated delayed loading-state test is deferred until configurable latency is introduced.
+- Column labels and enum values are formatted minimally; richer badges and status color treatments are presentation polish, not this phase’s server-state/URL objective.
+- No row-selection behavior was added because shipment details belong to the next vertical slice.
+
+### Validation
+
+- `npm run lint` — passes with the same two pre-existing shadcn fast-refresh warnings.
+- `npm run test` — passes: 5 test files, 22 tests.
+- `npm run build` — passes.
+
+### Remaining risks
+
+- Vite reports a non-failing 530.86 kB minified chunk warning after adding TanStack Table and the operations board. Code splitting should be evaluated with the later details/realtime features; changing bundling solely to hide the threshold is not justified yet.
+- The current test suite regenerates the full 5,000-record repository per test and now takes about 25 seconds in this environment. A smaller injected test dataset remains a likely future optimization.
+- Background failure with retained placeholder/cached data is implemented but does not yet have a focused component test.
+- Native filter controls are intentionally functional rather than polished.
+- Shipment detail selection, role permissions, mutations, optimistic reconciliation, and realtime remain out of scope and unimplemented.
