@@ -4,13 +4,15 @@ import { getShipment, getShipments } from "@/api/shipments-api";
 import { getOperators } from "@/api/operators-api";
 import type { ShipmentListParams } from "@/domain/contracts";
 import { operationsKeys } from "@/features/operations/operations-query-keys";
+import { useRealtimeConnectionState } from "@/realtime/realtime-context";
 
 export function useShipmentsQuery(params: ShipmentListParams) {
+  const connectionState = useRealtimeConnectionState();
   return useQuery({
     queryKey: operationsKeys.list(params),
     queryFn: ({ signal }) => getShipments(params, signal),
     placeholderData: keepPreviousData,
-    refetchInterval: 60_000,
+    refetchInterval: connectionState === "connected" ? 60_000 : 15_000,
   });
 }
 

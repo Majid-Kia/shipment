@@ -17,6 +17,23 @@ import {
   toShipmentListParams,
 } from "@/features/operations/operations-search-params";
 import { useShipmentsQuery } from "@/features/operations/operations-queries";
+import { useRealtimeConnectionState } from "@/realtime/realtime-context";
+
+function RealtimeConnectionIndicator() {
+  const state = useRealtimeConnectionState();
+  return (
+    <p
+      className={
+        state === "connected"
+          ? "text-sm text-emerald-700"
+          : "text-sm text-amber-700"
+      }
+      role="status"
+    >
+      Realtime: {state}
+    </p>
+  );
+}
 
 export function OperationsPage() {
   const [selectedShipmentId, setSelectedShipmentId] = useState<string | null>(
@@ -100,6 +117,8 @@ export function OperationsPage() {
           Monitor active operational exceptions across the shipment network.
         </p>
       </div>
+
+      <RealtimeConnectionIndicator />
 
       <ShipmentFilters
         filters={filters}

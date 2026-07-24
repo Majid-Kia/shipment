@@ -4,6 +4,7 @@ import {
   getCoreRowModel,
   useReactTable,
 } from "@tanstack/react-table";
+import { memo } from "react";
 
 import type { Shipment } from "@/domain/shipment";
 import {
@@ -55,7 +56,7 @@ const columns = [
   }),
 ];
 
-export function ShipmentTable({
+export const ShipmentTable = memo(function ShipmentTable({
   shipments,
   pageCount,
   selectedShipmentId,
@@ -93,29 +94,68 @@ export function ShipmentTable({
           ))}
         </TableHeader>
         <TableBody>
-          {table.getRowModel().rows.map((row) => (
-            <TableRow
-              aria-selected={row.id === selectedShipmentId}
-              className="cursor-pointer focus-visible:ring-2 focus-visible:ring-ring"
-              key={row.id}
-              tabIndex={0}
-              onClick={() => onSelectShipment(row.id)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  onSelectShipment(row.id);
-                }
-              }}
-            >
-              {row.getVisibleCells().map((cell) => (
-                <TableCell className="whitespace-nowrap" key={cell.id}>
-                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                </TableCell>
-              ))}
-            </TableRow>
+          {shipments.map((shipment) => (
+            <ShipmentRow
+              isSelected={shipment.id === selectedShipmentId}
+              key={shipment.id}
+              shipment={shipment}
+              onSelect={onSelectShipment}
+            />
           ))}
         </TableBody>
       </Table>
     </div>
   );
-}
+});
+
+const ShipmentRow = memo(function ShipmentRow({
+  shipment,
+  isSelected,
+  onSelect,
+}: {
+  shipment: Shipment;
+  isSelected: boolean;
+  onSelect: (id: string) => void;
+}) {
+  const select = () => onSelect(shipment.id);
+  return (
+    <TableRow
+      aria-selected={isSelected}
+      className="cursor-pointer focus-visible:ring-2 focus-visible:ring-ring"
+      tabIndex={0}
+      onClick={select}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          select();
+        }
+      }}
+    >
+      <TableCell className="whitespace-nowrap">
+        {shipment.shipmentNumber}
+      </TableCell>
+      <TableCell className="whitespace-nowrap">{shipment.originPort}</TableCell>
+      <TableCell className="whitespace-nowrap">
+        {shipment.destinationPort}
+      </TableCell>
+      <TableCell className="whitespace-nowrap">
+        {dateFormatter.format(new Date(shipment.eta))}
+      </TableCell>
+      <TableCell className="whitespace-nowrap">
+        {readable(shipment.exceptionType)}
+      </TableCell>
+      <TableCell className="whitespace-nowrap">
+        {readable(shipment.priority)}
+      </TableCell>
+      <TableCell className="whitespace-nowrap">
+        {readable(shipment.status)}
+      </TableCell>
+      <TableCell className="whitespace-nowrap">
+        {shipment.assignedTo?.name ?? "Unassigned"}
+      </TableCell>
+      <TableCell className="whitespace-nowrap">
+        {dateFormatter.format(new Date(shipment.updatedAt))}
+      </TableCell>
+    </TableRow>
+  );
+});

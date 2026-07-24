@@ -3,7 +3,13 @@ import type {
   ShipmentListResponse,
 } from "@/domain/contracts";
 import type { Operator } from "@/domain/operator";
-import type { ShipmentDetails, ShipmentStatus } from "@/domain/shipment";
+import {
+  EXCEPTION_TYPES,
+  SHIPMENT_PRIORITIES,
+  type ShipmentDetails,
+  type ShipmentRealtimeEvent,
+  type ShipmentStatus,
+} from "@/domain/shipment";
 import { createOperators, createShipments } from "@/mocks/factories";
 
 export class RepositoryError extends Error {
@@ -50,6 +56,50 @@ class ShipmentRepository {
   get(id: string) {
     const shipment = this.shipments.get(id);
     return shipment ? copyDetails(shipment) : null;
+  }
+
+  applyRandomRealtimeUpdate(random = Math.random): ShipmentRealtimeEvent {
+    const shipments = [...this.shipments.values()];
+    const shipment = shipments[Math.floor(random() * shipments.length)]!;
+    const timestamp = this.nextTimestamp(shipment);
+    const choice = Math.floor(random() * 3);
+    const payload: ShipmentRealtimeEvent["payload"] =
+      choice === 0
+        ? {
+            priority:
+              SHIPMENT_PRIORITIES[
+                Math.floor(random() * SHIPMENT_PRIORITIES.length)
+              ]!,
+          }
+        : choice === 1
+          ? {
+              exceptionType:
+                EXCEPTION_TYPES[Math.floor(random() * EXCEPTION_TYPES.length)]!,
+            }
+          : {
+              eta: new Date(
+                new Date(shipment.eta).getTime() +
+                  (1 + Math.floor(random() * 12)) * 60 * 60 * 1000,
+              ).toISOString(),
+            };
+
+    shipment.version += 1;
+    shipment.updatedAt = timestamp;
+    Object.assign(shipment, payload);
+    this.addEvent(
+      shipment,
+      "SHIPMENT_UPDATED",
+      "Shipment updated in realtime.",
+    );
+
+    return {
+      eventId: `${shipment.id}-realtime-v${shipment.version}`,
+      shipmentId: shipment.id,
+      version: shipment.version,
+      type: "SHIPMENT_UPDATED",
+      timestamp,
+      payload: { ...payload, updatedAt: timestamp },
+    };
   }
 
   list(params: ShipmentListParams): ShipmentListResponse {
@@ -215,7 +265,7 @@ class ShipmentRepository {
 
   private addEvent(
     shipment: ShipmentDetails,
-    type: "SHIPMENT_ACKNOWLEDGED" | "SHIPMENT_ASSIGNED",
+    type: "SHIPMENT_UPDATED" | "SHIPMENT_ACKNOWLEDGED" | "SHIPMENT_ASSIGNED",
     summary: string,
   ) {
     shipment.recentEvents = [

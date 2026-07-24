@@ -52,6 +52,25 @@ export interface ShipmentEventRecord {
   version: number;
 }
 
+export interface ShipmentRealtimeEvent {
+  eventId: string;
+  shipmentId: string;
+  version: number;
+  type: "SHIPMENT_UPDATED";
+  timestamp: string;
+  payload: Partial<
+    Pick<
+      Shipment,
+      | "eta"
+      | "exceptionType"
+      | "priority"
+      | "status"
+      | "assignedTo"
+      | "updatedAt"
+    >
+  >;
+}
+
 export interface ShipmentDetails extends Shipment {
   exception: {
     description: string;
