@@ -3,12 +3,9 @@ import type { ShipmentListParams } from "@/domain/contracts";
 export const operationsKeys = {
   all: ["operations"] as const,
   shipments: () => [...operationsKeys.all, "shipments"] as const,
+  lists: () => [...operationsKeys.shipments(), "list"] as const,
   list: (params: ShipmentListParams) =>
-    [
-      ...operationsKeys.shipments(),
-      "list",
-      normalizeListParams(params),
-    ] as const,
+    [...operationsKeys.lists(), normalizeListParams(params)] as const,
   details: () => [...operationsKeys.shipments(), "detail"] as const,
   detail: (id: string) => [...operationsKeys.details(), id] as const,
   operators: () => [...operationsKeys.all, "operators"] as const,

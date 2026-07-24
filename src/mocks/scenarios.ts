@@ -1,4 +1,5 @@
 interface MutationFailureState {
+  delay: number;
   failureRate: number;
   forcedResult: "failure" | "success" | null;
   randomState: number;
@@ -6,6 +7,7 @@ interface MutationFailureState {
 
 const DEFAULT_RANDOM_STATE = 0x5eed1234;
 const state: MutationFailureState = {
+  delay: 0,
   failureRate: 0.2,
   forcedResult: null,
   randomState: DEFAULT_RANDOM_STATE,
@@ -33,11 +35,20 @@ export function setMutationFailureRate(failureRate: number) {
   state.failureRate = failureRate;
 }
 
+export function getMutationDelay() {
+  return state.delay;
+}
+
+export function setMutationDelay(delay: number) {
+  state.delay = delay;
+}
+
 export function forceNextMutationResult(result: "failure" | "success") {
   state.forcedResult = result;
 }
 
 export function resetMutationScenarios() {
+  state.delay = 0;
   state.failureRate = 0.2;
   state.forcedResult = null;
   state.randomState = DEFAULT_RANDOM_STATE;

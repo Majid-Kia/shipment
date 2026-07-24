@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,8 +13,13 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import type { ShipmentDetails } from "@/domain/shipment";
+import { ApiClientError } from "@/domain/errors";
 import { PermissionGate } from "@/features/operations/components/PermissionGate";
-import { useShipmentDetailsQuery } from "@/features/operations/operations-queries";
+import { useShipmentMutations } from "@/features/operations/operations-mutations";
+import {
+  useOperatorsQuery,
+  useShipmentDetailsQuery,
+} from "@/features/operations/operations-queries";
 
 const dateFormatter = new Intl.DateTimeFormat("en", {
   dateStyle: "medium",
@@ -73,6 +80,13 @@ export function ShipmentDetailsSheet({
 }
 
 function DetailsContent({ shipment }: { shipment: ShipmentDetails }) {
+  const [operatorId, setOperatorId] = useState("");
+  const operatorsQuery = useOperatorsQuery();
+  const mutations = useShipmentMutations(shipment.id);
+  const selectedOperator = operatorsQuery.data?.items.find(
+    ({ id }) => id === operatorId,
+  );
+
   return (
     <>
       <div className="space-y-6 p-6">
@@ -147,19 +161,72 @@ function DetailsContent({ shipment }: { shipment: ShipmentDetails }) {
           </SheetFooter>
         }
       >
-        <SheetFooter className="border-t sm:flex-row">
-          <Button disabled={shipment.status !== "OPEN"}>
-            Acknowledge exception
-          </Button>
-          <PermissionGate permission="shipment:assign">
-            <Button disabled={shipment.status === "RESOLVED"} variant="outline">
-              Assign shipment
+        <SheetFooter className="border-t">
+          {mutations.error ? (
+            <Alert variant="destructive">
+              <AlertTitle>Shipment update failed</AlertTitle>
+              <AlertDescription>
+                {mutationErrorMessage(mutations.error)}
+              </AlertDescription>
+            </Alert>
+          ) : null}
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button
+              disabled={shipment.status !== "OPEN" || mutations.isPending}
+              onClick={() => mutations.acknowledge(shipment.version)}
+            >
+              {mutations.isPending ? "Updating…" : "Acknowledge exception"}
             </Button>
-          </PermissionGate>
+            <PermissionGate permission="shipment:assign">
+              <label className="sr-only" htmlFor="operator-assignment">
+                Operator
+              </label>
+              <select
+                aria-label="Operator"
+                className="h-8 min-w-36 rounded-md border bg-background px-2"
+                disabled={
+                  operatorsQuery.isPending ||
+                  shipment.status === "RESOLVED" ||
+                  mutations.isPending
+                }
+                id="operator-assignment"
+                value={operatorId}
+                onChange={(event) => setOperatorId(event.target.value)}
+              >
+                <option value="">Select operator</option>
+                {operatorsQuery.data?.items.map((operator) => (
+                  <option key={operator.id} value={operator.id}>
+                    {operator.name}
+                  </option>
+                ))}
+              </select>
+              <Button
+                disabled={
+                  !selectedOperator ||
+                  shipment.status === "RESOLVED" ||
+                  mutations.isPending
+                }
+                variant="outline"
+                onClick={() =>
+                  selectedOperator &&
+                  mutations.assign(selectedOperator, shipment.version)
+                }
+              >
+                Assign shipment
+              </Button>
+            </PermissionGate>
+          </div>
         </SheetFooter>
       </PermissionGate>
     </>
   );
+}
+
+function mutationErrorMessage(error: Error) {
+  if (error instanceof ApiClientError) {
+    return `${error.appError.message} The optimistic update was rolled back.`;
+  }
+  return "The shipment could not be updated. The optimistic update was rolled back.";
 }
 
 function DetailSection({

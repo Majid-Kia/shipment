@@ -1,4 +1,4 @@
-import { HttpResponse, http } from "msw";
+import { HttpResponse, delay, http } from "msw";
 import { z } from "zod";
 
 import type { ApiErrorBody, ErrorCode } from "@/domain/contracts";
@@ -12,7 +12,7 @@ import {
   assignShipmentRequestSchema,
 } from "@/domain/schemas";
 import { RepositoryError, shipmentRepository } from "@/mocks/database";
-import { shouldFailMutation } from "@/mocks/scenarios";
+import { getMutationDelay, shouldFailMutation } from "@/mocks/scenarios";
 
 let requestCounter = 0;
 
@@ -103,6 +103,7 @@ export const handlers = [
         String(params.id),
         parsed.data.expectedVersion,
       );
+      await delay(getMutationDelay());
       if (shouldFailMutation()) {
         return errorResponse(
           503,
@@ -142,6 +143,7 @@ export const handlers = [
         parsed.data.operatorId,
         parsed.data.expectedVersion,
       );
+      await delay(getMutationDelay());
       if (shouldFailMutation()) {
         return errorResponse(
           503,

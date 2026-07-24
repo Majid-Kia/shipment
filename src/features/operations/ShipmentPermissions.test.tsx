@@ -31,6 +31,10 @@ describe("shipment permission rendering", () => {
     ).toBeEnabled();
     expect(
       within(sheet).getByRole("button", { name: "Assign shipment" }),
+    ).toBeDisabled();
+    await user.selectOptions(within(sheet).getByLabelText("Operator"), "OP-01");
+    expect(
+      within(sheet).getByRole("button", { name: "Assign shipment" }),
     ).toBeEnabled();
   });
 });
