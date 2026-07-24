@@ -58,9 +58,13 @@ const columns = [
 export function ShipmentTable({
   shipments,
   pageCount,
+  selectedShipmentId,
+  onSelectShipment,
 }: {
   shipments: Shipment[];
   pageCount: number;
+  selectedShipmentId: string | null;
+  onSelectShipment: (id: string) => void;
 }) {
   const table = useReactTable({
     data: shipments,
@@ -90,7 +94,19 @@ export function ShipmentTable({
         </TableHeader>
         <TableBody>
           {table.getRowModel().rows.map((row) => (
-            <TableRow key={row.id}>
+            <TableRow
+              aria-selected={row.id === selectedShipmentId}
+              className="cursor-pointer focus-visible:ring-2 focus-visible:ring-ring"
+              key={row.id}
+              tabIndex={0}
+              onClick={() => onSelectShipment(row.id)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  onSelectShipment(row.id);
+                }
+              }}
+            >
               {row.getVisibleCells().map((cell) => (
                 <TableCell className="whitespace-nowrap" key={cell.id}>
                   {flexRender(cell.column.columnDef.cell, cell.getContext())}

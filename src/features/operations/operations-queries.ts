@@ -1,6 +1,6 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
-import { getShipments } from "@/api/shipments-api";
+import { getShipment, getShipments } from "@/api/shipments-api";
 import type { ShipmentListParams } from "@/domain/contracts";
 import { operationsKeys } from "@/features/operations/operations-query-keys";
 
@@ -10,5 +10,13 @@ export function useShipmentsQuery(params: ShipmentListParams) {
     queryFn: ({ signal }) => getShipments(params, signal),
     placeholderData: keepPreviousData,
     refetchInterval: 60_000,
+  });
+}
+
+export function useShipmentDetailsQuery(id: string | null) {
+  return useQuery({
+    queryKey: operationsKeys.detail(id ?? ""),
+    queryFn: ({ signal }) => getShipment(id!, signal),
+    enabled: id !== null,
   });
 }

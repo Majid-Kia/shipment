@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -8,6 +8,7 @@ import { Pagination } from "@/features/operations/components/Pagination";
 import { ShipmentFilters } from "@/features/operations/components/ShipmentFilters";
 import { ShipmentTable } from "@/features/operations/components/ShipmentTable";
 import { SummaryCards } from "@/features/operations/components/SummaryCards";
+import { ShipmentDetailsSheet } from "@/features/operations/components/ShipmentDetailsSheet";
 import {
   PAGE_SIZE,
   type OperationsSearchState,
@@ -18,6 +19,9 @@ import {
 import { useShipmentsQuery } from "@/features/operations/operations-queries";
 
 export function OperationsPage() {
+  const [selectedShipmentId, setSelectedShipmentId] = useState<string | null>(
+    null,
+  );
   const [searchParams, setSearchParams] = useSearchParams();
   const filters = useMemo(
     () => parseOperationsSearchParams(searchParams),
@@ -158,6 +162,8 @@ export function OperationsPage() {
               <ShipmentTable
                 shipments={shipmentsQuery.data.items}
                 pageCount={pageCount}
+                selectedShipmentId={selectedShipmentId}
+                onSelectShipment={setSelectedShipmentId}
               />
               <Pagination
                 page={filters.page}
@@ -169,6 +175,10 @@ export function OperationsPage() {
           )}
         </>
       ) : null}
+      <ShipmentDetailsSheet
+        shipmentId={selectedShipmentId}
+        onClose={() => setSelectedShipmentId(null)}
+      />
     </section>
   );
 }
