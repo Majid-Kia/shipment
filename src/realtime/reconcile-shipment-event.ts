@@ -2,13 +2,10 @@ import type { QueryClient } from "@tanstack/react-query";
 
 import type { ShipmentListResponse } from "@/domain/contracts";
 import { shipmentRealtimeEventSchema } from "@/domain/schemas";
-import type {
-  Shipment,
-  ShipmentDetails,
-  ShipmentRealtimeEvent,
-} from "@/domain/shipment";
+import type { ShipmentDetails, ShipmentRealtimeEvent } from "@/domain/shipment";
 import { operationsKeys } from "@/features/operations/operations-query-keys";
 import { ReconciliationRegistry } from "@/realtime/reconciliation-registry";
+import { applyEventToCachedShipment } from "@/realtime/shipment-reconciliation";
 
 export type ReconciliationResult =
   | { accepted: true; visible: boolean; event: ShipmentRealtimeEvent }
@@ -41,42 +38,15 @@ export function reconcileShipmentEvent(
   }
 
   registry.recordConfirmedVersion(event.shipmentId, event.version);
-  let visible = false;
-
-  queryClient.setQueryData<ShipmentDetails>(
-    operationsKeys.detail(event.shipmentId),
-    (shipment) => {
-      if (!shipment) return shipment;
-      visible = true;
-      return applyEvent(shipment, event);
-    },
-  );
-  queryClient.setQueriesData<ShipmentListResponse>(
-    { queryKey: operationsKeys.lists() },
-    (data) => {
-      if (!data) return data;
-      const index = data.items.findIndex(({ id }) => id === event.shipmentId);
-      if (index < 0) return data;
-      visible = true;
-      const items = data.items.slice();
-      items[index] = applyEvent(items[index]!, event);
-      return { ...data, items };
-    },
+  const pending = registry.getPendingMutation(event.shipmentId);
+  if (pending) registry.recordPendingEvent(event);
+  const visible = applyEventToCachedShipment(
+    queryClient,
+    event,
+    pending?.overlay,
   );
 
   return { accepted: true, visible, event };
-}
-
-function applyEvent<T extends Shipment>(
-  shipment: T,
-  event: ShipmentRealtimeEvent,
-): T {
-  return {
-    ...shipment,
-    ...event.payload,
-    version: event.version,
-    updatedAt: event.payload.updatedAt ?? event.timestamp,
-  };
 }
 
 function findHighestCachedVersion(

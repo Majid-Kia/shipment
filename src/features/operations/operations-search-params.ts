@@ -40,60 +40,34 @@ export function parseOperationsSearchParams(
 ): OperationsSearchState {
   const raw = Object.fromEntries(searchParams.entries());
   const parsed = searchParamsSchema.safeParse(raw);
-
   if (parsed.success) return parsed.data;
 
-  const valid: Record<string, string> = {};
-  for (const key of [
-    "search",
-    "exceptionType",
-    "priority",
-    "status",
-    "origin",
-    "assigned",
-    "page",
-  ]) {
-    const value = searchParams.get(key);
-    if (value !== null) valid[key] = value;
-  }
+  const search = searchParamsSchema.shape.search.safeParse(raw.search);
 
-  const fieldByField = searchParamsSchema.safeParse(valid);
-  if (fieldByField.success) return fieldByField.data;
+  const exceptionType = searchParamsSchema.shape.exceptionType.safeParse(
+    raw.exceptionType,
+  );
+
+  const priority = searchParamsSchema.shape.priority.safeParse(raw.priority);
+
+  const status = searchParamsSchema.shape.status.safeParse(raw.status);
+
+  const origin = searchParamsSchema.shape.origin.safeParse(raw.origin);
+
+  const assigned = searchParamsSchema.shape.assigned.safeParse(raw.assigned);
+
+  const page = searchParamsSchema.shape.page.safeParse(raw.page);
 
   return {
-    ...(searchParamsSchema.shape.search.safeParse(raw.search).success
-      ? { search: raw.search?.trim() || undefined }
-      : {}),
-    ...(searchParamsSchema.shape.exceptionType.safeParse(raw.exceptionType)
-      .success
-      ? {
-          exceptionType:
-            raw.exceptionType as OperationsSearchState["exceptionType"],
-        }
-      : {}),
-    ...(searchParamsSchema.shape.priority.safeParse(raw.priority).success
-      ? { priority: raw.priority as OperationsSearchState["priority"] }
-      : {}),
-    ...(searchParamsSchema.shape.status.safeParse(raw.status).success
-      ? { status: raw.status as OperationsSearchState["status"] }
-      : {}),
-    ...(searchParamsSchema.shape.origin.safeParse(raw.origin).success
-      ? { origin: raw.origin?.trim() || undefined }
-      : {}),
-    ...(raw.assigned === "true"
-      ? { assigned: true }
-      : raw.assigned === "false"
-        ? { assigned: false }
-        : {}),
-    page:
-      typeof raw.page === "string" &&
-      /^\d+$/.test(raw.page) &&
-      Number(raw.page) > 0
-        ? Number(raw.page)
-        : 1,
+    ...(search.success ? { search: search.data } : {}),
+    ...(exceptionType.success ? { exceptionType: exceptionType.data } : {}),
+    ...(priority.success ? { priority: priority.data } : {}),
+    ...(status.success ? { status: status.data } : {}),
+    ...(origin.success ? { origin: origin.data } : {}),
+    ...(assigned.success ? { assigned: assigned.data } : {}),
+    page: page.success ? page.data : 1,
   };
 }
-
 export function serializeOperationsSearchState(state: OperationsSearchState) {
   const searchParams = new URLSearchParams();
   if (state.search) searchParams.set("search", state.search.trim());

@@ -61,6 +61,20 @@ describe("reconcileShipmentEvent", () => {
     );
   });
 
+  it("rejects malformed events before touching the cache", () => {
+    const cached = queryClient.getQueryData(operationsKeys.list(listParams));
+    expect(
+      reconcileShipmentEvent(
+        { ...event(), payload: { unexpected: true } },
+        queryClient,
+        registry,
+      ),
+    ).toEqual({ accepted: false, reason: "invalid" });
+    expect(queryClient.getQueryData(operationsKeys.list(listParams))).toBe(
+      cached,
+    );
+  });
+
   it("rejects duplicate event IDs without touching the cache", () => {
     expect(
       reconcileShipmentEvent(event(), queryClient, registry).accepted,

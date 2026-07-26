@@ -1,9 +1,9 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 
 import { operationsKeys } from "@/features/operations/operations-query-keys";
 import { RealtimeStateContext } from "@/realtime/realtime-context";
-import { ReconciliationRegistry } from "@/realtime/reconciliation-registry";
+import { getReconciliationRegistry } from "@/realtime/reconciliation-registry";
 import { reconcileShipmentEvent } from "@/realtime/reconcile-shipment-event";
 import {
   MockShipmentEventSource,
@@ -12,6 +12,7 @@ import {
 } from "@/realtime/shipment-event-source";
 
 const defaultSource = new MockShipmentEventSource();
+
 export function RealtimeProvider({
   children,
   source = defaultSource,
@@ -20,7 +21,7 @@ export function RealtimeProvider({
   source?: ShipmentEventSource;
 }) {
   const queryClient = useQueryClient();
-  const registryRef = useRef(new ReconciliationRegistry());
+  const registry = getReconciliationRegistry(queryClient);
   const [connectionState, setConnectionState] =
     useState<RealtimeConnectionState>(source.getConnectionState());
 
@@ -28,11 +29,7 @@ export function RealtimeProvider({
     let invalidationTimer: ReturnType<typeof setTimeout> | undefined;
     let previousState = source.getConnectionState();
     const unsubscribeEvents = source.subscribe((event) => {
-      const result = reconcileShipmentEvent(
-        event,
-        queryClient,
-        registryRef.current,
-      );
+      const result = reconcileShipmentEvent(event, queryClient, registry);
       if (result.accepted && !invalidationTimer) {
         invalidationTimer = setTimeout(() => {
           void queryClient.invalidateQueries({
@@ -63,7 +60,7 @@ export function RealtimeProvider({
       if (invalidationTimer) clearTimeout(invalidationTimer);
       source.disconnect();
     };
-  }, [queryClient, source]);
+  }, [queryClient, registry, source]);
 
   return (
     <RealtimeStateContext value={connectionState}>

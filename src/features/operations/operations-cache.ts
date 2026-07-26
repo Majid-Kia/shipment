@@ -9,7 +9,7 @@ export interface CacheSnapshot {
   entries: Array<{ queryKey: QueryKey; data: unknown }>;
 }
 
-type OptimisticChange =
+export type OptimisticChange =
   { type: "acknowledge" } | { type: "assign"; operator: Operator };
 
 export async function snapshotAndOptimisticallyUpdate(
@@ -67,6 +67,12 @@ export async function snapshotAndOptimisticallyUpdate(
   if (!base) throw new Error("Shipment is not available in the query cache.");
 
   return { snapshot: { entries }, expectedVersion: base.version };
+}
+
+export function toOptimisticOverlay(change: OptimisticChange) {
+  return change.type === "acknowledge"
+    ? ({ status: "ACKNOWLEDGED" as const } as const)
+    : ({ assignedTo: change.operator } as const);
 }
 
 export function restoreCacheSnapshot(
