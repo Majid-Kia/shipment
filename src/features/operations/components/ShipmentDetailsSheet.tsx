@@ -20,7 +20,8 @@ export function ShipmentDetailsSheet({
   shipmentId: string | null;
   onClose: () => void;
 }) {
-  const query = useShipmentDetailsQuery(shipmentId);
+  const { data, isError, isPending, refetch } =
+    useShipmentDetailsQuery(shipmentId);
 
   return (
     <Sheet
@@ -36,10 +37,10 @@ export function ShipmentDetailsSheet({
         </SheetHeader>
 
         <ShipmentDetailsBody
-          data={query.data}
-          isError={query.isError}
-          isPending={query.isPending}
-          onRetry={() => void query.refetch()}
+          data={data}
+          isError={isError}
+          isPending={isPending}
+          onRetry={() => refetch()}
         />
       </SheetContent>
     </Sheet>
