@@ -3,9 +3,10 @@ import { useState } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { SheetFooter } from "@/components/ui/sheet";
-import { ApiClientError } from "@/domain/errors";
+import { ApiClientError } from "@/api/errors";
+import { can } from "@/auth/permissions";
+import { useRole } from "@/auth/role-context";
 import type { ShipmentDetails } from "@/domain/shipment";
-import { PermissionGate } from "@/auth/permission-gate";
 import { useShipmentMutations } from "@/features/operations/operations-mutations";
 import { useOperatorsQuery } from "@/features/operations/operations-queries";
 
@@ -14,23 +15,32 @@ export function ShipmentDetailsActions({
 }: {
   shipment: ShipmentDetails;
 }) {
+  const { role } = useRole();
+  if (!can(role, "shipment:acknowledge")) {
+    return (
+      <SheetFooter className="border-t">
+        <p className="text-muted-foreground">
+          Operator role required to acknowledge or assign shipments.
+        </p>
+      </SheetFooter>
+    );
+  }
+
   return (
-    <PermissionGate
-      permission="shipment:acknowledge"
-      fallback={
-        <SheetFooter className="border-t">
-          <p className="text-muted-foreground">
-            Operator role required to acknowledge or assign shipments.
-          </p>
-        </SheetFooter>
-      }
-    >
-      <OperatorActions shipment={shipment} />
-    </PermissionGate>
+    <OperatorActions
+      canAssign={can(role, "shipment:assign")}
+      shipment={shipment}
+    />
   );
 }
 
-function OperatorActions({ shipment }: { shipment: ShipmentDetails }) {
+function OperatorActions({
+  canAssign,
+  shipment,
+}: {
+  canAssign: boolean;
+  shipment: ShipmentDetails;
+}) {
   const [operatorId, setOperatorId] = useState("");
   const operatorsQuery = useOperatorsQuery();
   const mutations = useShipmentMutations(shipment.id);
@@ -66,7 +76,7 @@ function OperatorActions({ shipment }: { shipment: ShipmentDetails }) {
       )}
       <div className="flex w-full flex-col gap-2">
         <div className="flex w-full gap-2">
-          <PermissionGate permission="shipment:assign">
+          {canAssign && (
             <div className="grow">
               <label className="sr-only" htmlFor="operator-assignment">
                 Operator
@@ -91,6 +101,8 @@ function OperatorActions({ shipment }: { shipment: ShipmentDetails }) {
                 ))}
               </select>
             </div>
+          )}
+          {canAssign && (
             <Button
               disabled={
                 !selectedOperator ||
@@ -107,7 +119,7 @@ function OperatorActions({ shipment }: { shipment: ShipmentDetails }) {
             >
               Assign shipment
             </Button>
-          </PermissionGate>
+          )}
         </div>
         <div className="flex gap-2">
           <Button

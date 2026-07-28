@@ -10,12 +10,14 @@ import {
 import { AppProviders } from "@/app/providers";
 import { createAppQueryClient } from "@/app/query-client";
 import { appRoutes } from "@/app/router";
-import type { UserRole } from "@/auth/role";
+import type { UserRole } from "@/auth/permissions";
+import type { ShipmentEventSource } from "@/realtime/contracts";
 
 interface RenderAppOptions {
   initialEntries?: InitialEntry[];
   queryClient?: QueryClient;
   initialRole?: UserRole;
+  realtimeSource?: ShipmentEventSource;
 }
 
 export function renderApp({
@@ -27,6 +29,7 @@ export function renderApp({
     },
   }),
   initialRole,
+  realtimeSource,
 }: RenderAppOptions = {}) {
   const router = createMemoryRouter(appRoutes, { initialEntries });
 
@@ -34,7 +37,11 @@ export function renderApp({
     queryClient,
     router,
     ...render(
-      <AppProviders queryClient={queryClient} initialRole={initialRole}>
+      <AppProviders
+        queryClient={queryClient}
+        initialRole={initialRole}
+        realtimeSource={realtimeSource}
+      >
         <RouterProvider router={router} />
       </AppProviders>,
     ),

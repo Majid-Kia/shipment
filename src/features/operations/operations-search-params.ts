@@ -1,72 +1,34 @@
 import { z } from "zod";
 
-import type { ShipmentListParams } from "@/domain/contracts";
+import type { ShipmentListParams } from "@/api/shipment-contracts";
 import {
   EXCEPTION_TYPES,
   SHIPMENT_PRIORITIES,
   SHIPMENT_STATUSES,
-  type ExceptionType,
-  type ShipmentPriority,
-  type ShipmentStatus,
 } from "@/domain/shipment";
 
 export const PAGE_SIZE = 50;
 
 const searchParamsSchema = z.object({
-  search: z.string().trim().min(1).optional(),
-  exceptionType: z.enum(EXCEPTION_TYPES).optional(),
-  priority: z.enum(SHIPMENT_PRIORITIES).optional(),
-  status: z.enum(SHIPMENT_STATUSES).optional(),
-  origin: z.string().trim().min(1).optional(),
+  search: z.string().trim().min(1).optional().catch(undefined),
+  exceptionType: z.enum(EXCEPTION_TYPES).optional().catch(undefined),
+  priority: z.enum(SHIPMENT_PRIORITIES).optional().catch(undefined),
+  status: z.enum(SHIPMENT_STATUSES).optional().catch(undefined),
+  origin: z.string().trim().min(1).optional().catch(undefined),
   assigned: z
     .enum(["true", "false"])
     .transform((value) => value === "true")
-    .optional(),
-  page: z.coerce.number().int().positive().default(1),
+    .optional()
+    .catch(undefined),
+  page: z.coerce.number().int().positive().default(1).catch(1),
 });
 
-export interface OperationsSearchState {
-  search?: string;
-  exceptionType?: ExceptionType;
-  priority?: ShipmentPriority;
-  status?: ShipmentStatus;
-  origin?: string;
-  assigned?: boolean;
-  page: number;
-}
+export type OperationsSearchState = z.infer<typeof searchParamsSchema>;
 
 export function parseOperationsSearchParams(
   searchParams: URLSearchParams,
 ): OperationsSearchState {
-  const raw = Object.fromEntries(searchParams.entries());
-  const parsed = searchParamsSchema.safeParse(raw);
-  if (parsed.success) return parsed.data;
-
-  const search = searchParamsSchema.shape.search.safeParse(raw.search);
-
-  const exceptionType = searchParamsSchema.shape.exceptionType.safeParse(
-    raw.exceptionType,
-  );
-
-  const priority = searchParamsSchema.shape.priority.safeParse(raw.priority);
-
-  const status = searchParamsSchema.shape.status.safeParse(raw.status);
-
-  const origin = searchParamsSchema.shape.origin.safeParse(raw.origin);
-
-  const assigned = searchParamsSchema.shape.assigned.safeParse(raw.assigned);
-
-  const page = searchParamsSchema.shape.page.safeParse(raw.page);
-
-  return {
-    ...(search.success ? { search: search.data } : {}),
-    ...(exceptionType.success ? { exceptionType: exceptionType.data } : {}),
-    ...(priority.success ? { priority: priority.data } : {}),
-    ...(status.success ? { status: status.data } : {}),
-    ...(origin.success ? { origin: origin.data } : {}),
-    ...(assigned.success ? { assigned: assigned.data } : {}),
-    page: page.success ? page.data : 1,
-  };
+  return searchParamsSchema.parse(Object.fromEntries(searchParams.entries()));
 }
 export function serializeOperationsSearchState(state: OperationsSearchState) {
   const searchParams = new URLSearchParams();

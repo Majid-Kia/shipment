@@ -1,16 +1,17 @@
 import type {
   ShipmentListParams,
   ShipmentListResponse,
-} from "@/domain/contracts";
-import type { Operator } from "@/domain/operator";
+} from "@/api/shipment-contracts";
 import {
   EXCEPTION_TYPES,
   SHIPMENT_PRIORITIES,
+  toShipment,
+  type Operator,
   type ShipmentDetails,
-  type ShipmentRealtimeEvent,
   type ShipmentStatus,
 } from "@/domain/shipment";
 import { createOperators, createShipments } from "@/mocks/factories";
+import type { ShipmentRealtimeEvent } from "@/realtime/contracts";
 
 export class RepositoryError extends Error {
   readonly code:
@@ -161,14 +162,7 @@ class ShipmentRepository {
     return {
       items: filtered
         .slice(start, start + params.pageSize)
-        .map(
-          ({
-            exception: _exception,
-            statusHistory: _history,
-            recentEvents: _events,
-            ...shipment
-          }) => structuredClone(shipment),
-        ),
+        .map((shipment) => structuredClone(toShipment(shipment))),
       page: params.page,
       pageSize: params.pageSize,
       total: filtered.length,

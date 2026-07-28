@@ -1,14 +1,14 @@
 import type { QueryClient } from "@tanstack/react-query";
 
-import type { ShipmentListResponse } from "@/domain/contracts";
-import { shipmentRealtimeEventSchema } from "@/domain/schemas";
-import type { ShipmentDetails, ShipmentRealtimeEvent } from "@/domain/shipment";
+import type { ShipmentListResponse } from "@/api/shipment-contracts";
+import type { ShipmentDetails } from "@/domain/shipment";
 import { operationsKeys } from "@/features/operations/operations-query-keys";
+import { shipmentRealtimeEventSchema } from "@/realtime/contracts";
 import { ReconciliationRegistry } from "@/realtime/reconciliation-registry";
 import { applyEventToCachedShipment } from "@/realtime/shipment-reconciliation";
 
 export type ReconciliationResult =
-  | { accepted: true; visible: boolean; event: ShipmentRealtimeEvent }
+  | { accepted: true }
   | { accepted: false; reason: "invalid" | "duplicate" | "stale" };
 
 export function reconcileShipmentEvent(
@@ -40,13 +40,9 @@ export function reconcileShipmentEvent(
   registry.recordConfirmedVersion(event.shipmentId, event.version);
   const pending = registry.getPendingMutation(event.shipmentId);
   if (pending) registry.recordPendingEvent(event);
-  const visible = applyEventToCachedShipment(
-    queryClient,
-    event,
-    pending?.overlay,
-  );
+  applyEventToCachedShipment(queryClient, event, pending?.overlay);
 
-  return { accepted: true, visible, event };
+  return { accepted: true };
 }
 
 function findHighestCachedVersion(

@@ -1,9 +1,3 @@
-import {
-  createColumnHelper,
-  flexRender,
-  getCoreRowModel,
-  useReactTable,
-} from "@tanstack/react-table";
 import { memo } from "react";
 
 import type { Shipment } from "@/domain/shipment";
@@ -16,7 +10,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-const columnHelper = createColumnHelper<Shipment>();
 const dateFormatter = new Intl.DateTimeFormat("en", {
   dateStyle: "medium",
   timeStyle: "short",
@@ -26,72 +19,36 @@ function readable(value: string) {
   return value.toLowerCase().replaceAll("_", " ");
 }
 
-const columns = [
-  columnHelper.accessor("shipmentNumber", { header: "Shipment Number" }),
-  columnHelper.accessor("originPort", { header: "Origin" }),
-  columnHelper.accessor("destinationPort", { header: "Destination" }),
-  columnHelper.accessor("eta", {
-    header: "ETA",
-    cell: ({ getValue }) => dateFormatter.format(new Date(getValue())),
-  }),
-  columnHelper.accessor("exceptionType", {
-    header: "Exception",
-    cell: ({ getValue }) => readable(getValue()),
-  }),
-  columnHelper.accessor("priority", {
-    header: "Priority",
-    cell: ({ getValue }) => readable(getValue()),
-  }),
-  columnHelper.accessor("status", {
-    header: "Status",
-    cell: ({ getValue }) => readable(getValue()),
-  }),
-  columnHelper.accessor("assignedTo", {
-    header: "Assigned To",
-    cell: ({ getValue }) => getValue()?.name ?? "Unassigned",
-  }),
-  columnHelper.accessor("updatedAt", {
-    header: "Last Updated",
-    cell: ({ getValue }) => dateFormatter.format(new Date(getValue())),
-  }),
-];
+const columnHeaders = [
+  "Shipment Number",
+  "Origin",
+  "Destination",
+  "ETA",
+  "Exception",
+  "Priority",
+  "Status",
+  "Assigned To",
+  "Last Updated",
+] as const;
 
 export const ShipmentTable = memo(function ShipmentTable({
   shipments,
-  pageCount,
   selectedShipmentId,
   onSelectShipment,
 }: {
   shipments: Shipment[];
-  pageCount: number;
   selectedShipmentId: string | null;
   onSelectShipment: (id: string) => void;
 }) {
-  const table = useReactTable({
-    data: shipments,
-    columns,
-    getRowId: (shipment) => shipment.id,
-    getCoreRowModel: getCoreRowModel(),
-    manualPagination: true,
-    pageCount,
-  });
-
   return (
     <div className="overflow-x-auto rounded-lg border">
       <Table>
         <TableHeader>
-          {table.getHeaderGroups().map((headerGroup) => (
-            <TableRow key={headerGroup.id}>
-              {headerGroup.headers.map((header) => (
-                <TableHead key={header.id}>
-                  {flexRender(
-                    header.column.columnDef.header,
-                    header.getContext(),
-                  )}
-                </TableHead>
-              ))}
-            </TableRow>
-          ))}
+          <TableRow>
+            {columnHeaders.map((header) => (
+              <TableHead key={header}>{header}</TableHead>
+            ))}
+          </TableRow>
         </TableHeader>
         <TableBody>
           {shipments.map((shipment) => (

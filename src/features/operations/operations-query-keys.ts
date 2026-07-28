@@ -1,4 +1,4 @@
-import type { ShipmentListParams } from "@/domain/contracts";
+import type { ShipmentListParams } from "@/api/shipment-contracts";
 
 export const operationsKeys = {
   all: ["operations"] as const,

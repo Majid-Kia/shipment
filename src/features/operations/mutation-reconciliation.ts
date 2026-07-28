@@ -15,29 +15,39 @@ import {
 export function reconcileMutationSuccess(
   queryClient: QueryClient,
   registry: ReconciliationRegistry,
-  response: ShipmentDetails,
+  canonicalShipment: ShipmentDetails,
 ) {
-  const pending = registry.finishMutation(response.id);
-  const finalShipment = (pending?.events ?? [])
-    .filter((event) => event.version > response.version)
-    .reduce<ShipmentDetails>(mergeRealtimeEvent, response);
+  const pendingMutation = registry.finishMutation(canonicalShipment.id);
+  const newerEvents = (pendingMutation?.events ?? []).filter(
+    (event) => event.version > canonicalShipment.version,
+  );
+  const renderedShipment = newerEvents.reduce<ShipmentDetails>(
+    mergeRealtimeEvent,
+    canonicalShipment,
+  );
 
-  registry.recordConfirmedVersion(response.id, finalShipment.version);
-  reconcileCanonicalShipment(queryClient, finalShipment);
-  return finalShipment;
+  registry.recordConfirmedVersion(
+    canonicalShipment.id,
+    renderedShipment.version,
+  );
+  reconcileCanonicalShipment(queryClient, renderedShipment);
+  return renderedShipment;
 }
 
 export function reconcileMutationFailure(
   queryClient: QueryClient,
   registry: ReconciliationRegistry,
   shipmentId: string,
-  snapshot: CacheSnapshot,
+  rollbackSnapshot: CacheSnapshot,
 ) {
-  const pending = registry.finishMutation(shipmentId);
-  restoreCacheSnapshot(queryClient, snapshot);
-  for (const event of pending?.events ?? []) {
-    if (event.version > pending!.baseVersion) {
-      applyEventToCachedShipment(queryClient, event);
-    }
+  const pendingMutation = registry.finishMutation(shipmentId);
+  restoreCacheSnapshot(queryClient, rollbackSnapshot);
+  if (!pendingMutation) return;
+
+  const newerEvents = pendingMutation.events.filter(
+    (event) => event.version > pendingMutation.baseVersion,
+  );
+  for (const event of newerEvents) {
+    applyEventToCachedShipment(queryClient, event);
   }
 }

@@ -1,4 +1,4 @@
-import type { ShipmentSummary } from "@/domain/contracts";
+import type { ShipmentSummary } from "@/api/shipment-contracts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 const summaryItems = [

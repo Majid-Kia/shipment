@@ -4,6 +4,11 @@ import { createRoot } from "react-dom/client";
 import App from "@/App";
 import "@/index.css";
 
+const rootElement = document.getElementById("root");
+if (!rootElement) {
+  throw new Error("The application root element was not found.");
+}
+
 async function enableMocking() {
   if (!import.meta.env.DEV) {
     return;
@@ -14,7 +19,7 @@ async function enableMocking() {
 }
 
 void enableMocking().then(() => {
-  createRoot(document.getElementById("root")!).render(
+  createRoot(rootElement).render(
     <StrictMode>
       <App />
     </StrictMode>,

@@ -2,13 +2,13 @@ import { useEffect, useState } from "react";
 
 import {
   EXCEPTION_TYPES,
+  PORT_CODES,
   SHIPMENT_PRIORITIES,
   SHIPMENT_STATUSES,
 } from "@/domain/shipment";
 import type { OperationsSearchState } from "@/features/operations/operations-search-params";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { PORT_CODES } from "@/domain/port";
 
 interface ShipmentFiltersProps {
   filters: OperationsSearchState;
@@ -35,6 +35,8 @@ export function ShipmentFilters({
   const [searchDraft, setSearchDraft] = useState(filters.search ?? "");
 
   useEffect(() => {
+    // Browser navigation is external state, so it must update the local draft.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSearchDraft(filters.search ?? "");
   }, [filters.search]);
 

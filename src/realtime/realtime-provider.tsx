@@ -1,24 +1,33 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { type ReactNode, useEffect, useState } from "react";
+import {
+  createContext,
+  type ReactNode,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
 
 import { operationsKeys } from "@/features/operations/operations-query-keys";
-import { RealtimeStateContext } from "@/realtime/realtime-context";
+import type {
+  RealtimeConnectionState,
+  ShipmentEventSource,
+} from "@/realtime/contracts";
 import { getReconciliationRegistry } from "@/realtime/reconciliation-registry";
 import { reconcileShipmentEvent } from "@/realtime/reconcile-shipment-event";
-import {
-  MockShipmentEventSource,
-  type RealtimeConnectionState,
-  type ShipmentEventSource,
-} from "@/realtime/shipment-event-source";
 
-const defaultSource = new MockShipmentEventSource();
+const RealtimeStateContext =
+  createContext<RealtimeConnectionState>("disconnected");
+
+export function useRealtimeConnectionState() {
+  return useContext(RealtimeStateContext);
+}
 
 export function RealtimeProvider({
   children,
-  source = defaultSource,
+  source,
 }: {
   children: ReactNode;
-  source?: ShipmentEventSource;
+  source: ShipmentEventSource;
 }) {
   const queryClient = useQueryClient();
   const registry = getReconciliationRegistry(queryClient);

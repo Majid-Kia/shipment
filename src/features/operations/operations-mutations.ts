@@ -1,12 +1,12 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
+import { ApiClientError } from "@/api/errors";
 import { acknowledgeShipment, assignShipment } from "@/api/shipments-api";
 import { useRole } from "@/auth/role-context";
-import type { Operator } from "@/domain/operator";
-import { ApiClientError } from "@/domain/errors";
+import type { Operator } from "@/domain/shipment";
 import {
   snapshotAndOptimisticallyUpdate,
-  toOptimisticOverlay,
+  type OptimisticChange,
 } from "@/features/operations/operations-cache";
 import {
   reconcileMutationFailure,
@@ -15,77 +15,58 @@ import {
 import { operationsKeys } from "@/features/operations/operations-query-keys";
 import { getReconciliationRegistry } from "@/realtime/reconciliation-registry";
 
+type ShipmentMutationCommand =
+  | { type: "acknowledge"; expectedVersion: number }
+  | { type: "assign"; operator: Operator; expectedVersion: number };
+
 export function useShipmentMutations(shipmentId: string) {
   const queryClient = useQueryClient();
   const registry = getReconciliationRegistry(queryClient);
   const { role } = useRole();
 
-  const acknowledge = useMutation({
-    mutationFn: async ({ expectedVersion }: { expectedVersion: number }) =>
-      acknowledgeShipment(shipmentId, { expectedVersion }, role),
-    onMutate: async () => {
-      const change = { type: "acknowledge" as const };
-      const { snapshot, expectedVersion } =
-        await snapshotAndOptimisticallyUpdate(queryClient, shipmentId, change);
-      registry.beginMutation(
-        shipmentId,
-        expectedVersion,
-        toOptimisticOverlay(change),
-      );
-      return { snapshot };
-    },
-    onError: (error, _variables, context) => {
-      if (context) {
-        reconcileMutationFailure(
-          queryClient,
-          registry,
+  const mutation = useMutation({
+    mutationFn: async (command: ShipmentMutationCommand) => {
+      if (command.type === "acknowledge") {
+        return acknowledgeShipment(
           shipmentId,
-          context.snapshot,
+          { expectedVersion: command.expectedVersion },
+          role,
         );
       }
-      invalidateConflictDetail(error, queryClient, shipmentId);
-    },
-    onSuccess: ({ shipment }) => {
-      reconcileMutationSuccess(queryClient, registry, shipment);
-    },
-    onSettled: () => {
-      void queryClient.invalidateQueries({
-        queryKey: operationsKeys.lists(),
-      });
-    },
-  });
-
-  const assign = useMutation({
-    mutationFn: async ({
-      operator,
-      expectedVersion,
-    }: {
-      operator: Operator;
-      expectedVersion: number;
-    }) =>
-      assignShipment(
+      return assignShipment(
         shipmentId,
-        { operatorId: operator.id, expectedVersion },
+        {
+          operatorId: command.operator.id,
+          expectedVersion: command.expectedVersion,
+        },
         role,
-      ),
-    onMutate: async ({ operator }) => {
-      const change = { type: "assign" as const, operator };
-      const { snapshot, expectedVersion } =
-        await snapshotAndOptimisticallyUpdate(queryClient, shipmentId, change);
-      registry.beginMutation(
-        shipmentId,
-        expectedVersion,
-        toOptimisticOverlay(change),
       );
-      return { snapshot };
     },
-    onError: (error, _variables, context) => {
+    onMutate: async (command) => {
+      if (registry.getPendingMutation(shipmentId)) {
+        throw new Error("A mutation is already pending for this shipment.");
+      }
+
+      const optimisticChange: OptimisticChange =
+        command.type === "acknowledge"
+          ? { type: "acknowledge" }
+          : { type: "assign", operator: command.operator };
+      const { rollbackSnapshot, baseVersion, optimisticOverlay } =
+        await snapshotAndOptimisticallyUpdate(
+          queryClient,
+          shipmentId,
+          optimisticChange,
+        );
+      registry.beginMutation(shipmentId, baseVersion, optimisticOverlay);
+      return { rollbackSnapshot };
+    },
+    onError: (error, _command, context) => {
       if (context) {
         reconcileMutationFailure(
           queryClient,
           registry,
           shipmentId,
-          context.snapshot,
+          context.rollbackSnapshot,
         );
       }
       invalidateConflictDetail(error, queryClient, shipmentId);
@@ -102,15 +83,15 @@ export function useShipmentMutations(shipmentId: string) {
 
   return {
     acknowledge: (expectedVersion: number) =>
-      acknowledge.mutate({ expectedVersion }),
+      mutation.mutate({ type: "acknowledge", expectedVersion }),
     assign: (operator: Operator, expectedVersion: number) =>
-      assign.mutate({ operator, expectedVersion }),
-    error: acknowledge.error ?? assign.error,
-    isPending: acknowledge.isPending || assign.isPending,
-    resetError: () => {
-      acknowledge.reset();
-      assign.reset();
-    },
+      mutation.mutate({
+        type: "assign",
+        operator,
+        expectedVersion,
+      }),
+    error: mutation.error,
+    isPending: mutation.isPending,
   };
 }
 

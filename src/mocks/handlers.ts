@@ -1,18 +1,23 @@
 import { HttpResponse, delay, http } from "msw";
 import { z } from "zod";
 
-import type { ApiErrorBody, ErrorCode } from "@/domain/contracts";
+import type { ApiErrorBody, ErrorCode } from "@/api/shipment-contracts";
+import {
+  acknowledgeShipmentRequestSchema,
+  assignShipmentRequestSchema,
+} from "@/api/shipment-contracts";
 import {
   EXCEPTION_TYPES,
   SHIPMENT_PRIORITIES,
   SHIPMENT_STATUSES,
+  type ShipmentDetails,
 } from "@/domain/shipment";
-import {
-  acknowledgeShipmentRequestSchema,
-  assignShipmentRequestSchema,
-} from "@/domain/schemas";
 import { RepositoryError, shipmentRepository } from "@/mocks/database";
-import { getMutationDelay, shouldFailMutation } from "@/mocks/scenarios";
+import {
+  getMutationDelay,
+  notifyMutationPreflight,
+  shouldFailMutation,
+} from "@/mocks/scenarios";
 
 let requestCounter = 0;
 
@@ -60,6 +65,31 @@ function isOperator(request: Request) {
   return (request.headers.get("x-mock-role") ?? "OPERATOR") === "OPERATOR";
 }
 
+async function executeMockShipmentMutation(
+  validate: () => void,
+  commit: () => ShipmentDetails,
+) {
+  try {
+    validate();
+    notifyMutationPreflight();
+    await delay(getMutationDelay());
+    if (shouldFailMutation()) {
+      return errorResponse(
+        503,
+        "SERVICE_UNAVAILABLE",
+        "The mutation failed. Please try again.",
+        true,
+      );
+    }
+    return HttpResponse.json({ shipment: commit() });
+  } catch (error) {
+    if (error instanceof RepositoryError) {
+      return repositoryErrorResponse(error);
+    }
+    throw error;
+  }
+}
+
 export const handlers = [
   http.get("/api/shipments", ({ request }) => {
     const url = new URL(request.url);
@@ -98,32 +128,18 @@ export const handlers = [
       return errorResponse(400, "BAD_REQUEST", "Request body is invalid.");
     }
 
-    try {
-      shipmentRepository.validateAcknowledge(
-        String(params.id),
-        parsed.data.expectedVersion,
-      );
-      await delay(getMutationDelay());
-      if (shouldFailMutation()) {
-        return errorResponse(
-          503,
-          "SERVICE_UNAVAILABLE",
-          "The mutation failed. Please try again.",
-          true,
-        );
-      }
-      return HttpResponse.json({
-        shipment: shipmentRepository.acknowledge(
+    return executeMockShipmentMutation(
+      () =>
+        shipmentRepository.validateAcknowledge(
           String(params.id),
           parsed.data.expectedVersion,
         ),
-      });
-    } catch (error) {
-      if (error instanceof RepositoryError) {
-        return repositoryErrorResponse(error);
-      }
-      throw error;
-    }
+      () =>
+        shipmentRepository.acknowledge(
+          String(params.id),
+          parsed.data.expectedVersion,
+        ),
+    );
   }),
 
   http.post("/api/shipments/:id/assign", async ({ params, request }) => {
@@ -137,34 +153,20 @@ export const handlers = [
       return errorResponse(400, "BAD_REQUEST", "Request body is invalid.");
     }
 
-    try {
-      shipmentRepository.validateAssign(
-        String(params.id),
-        parsed.data.operatorId,
-        parsed.data.expectedVersion,
-      );
-      await delay(getMutationDelay());
-      if (shouldFailMutation()) {
-        return errorResponse(
-          503,
-          "SERVICE_UNAVAILABLE",
-          "The mutation failed. Please try again.",
-          true,
-        );
-      }
-      return HttpResponse.json({
-        shipment: shipmentRepository.assign(
+    return executeMockShipmentMutation(
+      () =>
+        shipmentRepository.validateAssign(
           String(params.id),
           parsed.data.operatorId,
           parsed.data.expectedVersion,
         ),
-      });
-    } catch (error) {
-      if (error instanceof RepositoryError) {
-        return repositoryErrorResponse(error);
-      }
-      throw error;
-    }
+      () =>
+        shipmentRepository.assign(
+          String(params.id),
+          parsed.data.operatorId,
+          parsed.data.expectedVersion,
+        ),
+    );
   }),
 ];
 

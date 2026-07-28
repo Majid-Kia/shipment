@@ -1,17 +1,8 @@
 import { shipmentRepository } from "@/mocks/database";
-
-export type RealtimeConnectionState =
-  "disconnected" | "connecting" | "connected";
-
-export interface ShipmentEventSource {
-  connect(): void;
-  disconnect(): void;
-  subscribe(listener: (event: unknown) => void): () => void;
-  subscribeToConnection(
-    listener: (state: RealtimeConnectionState) => void,
-  ): () => void;
-  getConnectionState(): RealtimeConnectionState;
-}
+import type {
+  RealtimeConnectionState,
+  ShipmentEventSource,
+} from "@/realtime/contracts";
 
 export class MockShipmentEventSource implements ShipmentEventSource {
   private eventListeners = new Set<(event: unknown) => void>();
@@ -122,49 +113,6 @@ export class MockShipmentEventSource implements ShipmentEventSource {
     if (this.outageTimer) clearTimeout(this.outageTimer);
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     this.updateTimer = this.outageTimer = this.reconnectTimer = undefined;
-  }
-}
-
-export class ManualShipmentEventSource implements ShipmentEventSource {
-  private eventListeners = new Set<(event: unknown) => void>();
-  private connectionListeners = new Set<
-    (state: RealtimeConnectionState) => void
-  >();
-  private state: RealtimeConnectionState = "disconnected";
-
-  connect() {
-    this.setConnectionState("connected");
-  }
-
-  disconnect() {
-    this.setConnectionState("disconnected");
-  }
-
-  emit(event: unknown) {
-    for (const listener of this.eventListeners) listener(event);
-  }
-
-  setConnectionState(state: RealtimeConnectionState) {
-    this.state = state;
-    for (const listener of this.connectionListeners) listener(state);
-  }
-
-  subscribe(listener: (event: unknown) => void) {
-    this.eventListeners.add(listener);
-    return () => {
-      this.eventListeners.delete(listener);
-    };
-  }
-
-  subscribeToConnection(listener: (state: RealtimeConnectionState) => void) {
-    this.connectionListeners.add(listener);
-    return () => {
-      this.connectionListeners.delete(listener);
-    };
-  }
-
-  getConnectionState() {
-    return this.state;
   }
 }
 

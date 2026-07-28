@@ -1,6 +1,6 @@
 import type { QueryClient } from "@tanstack/react-query";
 
-import type { ShipmentRealtimeEvent } from "@/domain/shipment";
+import type { ShipmentRealtimeEvent } from "@/realtime/contracts";
 
 const DEFAULT_EVENT_TTL = 10 * 60 * 1000;
 const DEFAULT_EVENT_LIMIT = 1_000;
@@ -90,12 +90,6 @@ export class ReconciliationRegistry {
     while (this.eventIds.size > this.eventLimit) {
       this.eventIds.delete(this.eventIds.keys().next().value!);
     }
-  }
-
-  reset() {
-    this.confirmedVersions.clear();
-    this.eventIds.clear();
-    this.pendingMutations.clear();
   }
 
   private prune() {

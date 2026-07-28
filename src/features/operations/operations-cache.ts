@@ -1,8 +1,15 @@
 import type { QueryClient, QueryKey } from "@tanstack/react-query";
 
-import type { ShipmentListResponse, ShipmentSummary } from "@/domain/contracts";
-import type { Operator } from "@/domain/operator";
-import type { Shipment, ShipmentDetails } from "@/domain/shipment";
+import type {
+  ShipmentListResponse,
+  ShipmentSummary,
+} from "@/api/shipment-contracts";
+import {
+  toShipment,
+  type Operator,
+  type Shipment,
+  type ShipmentDetails,
+} from "@/domain/shipment";
 import { operationsKeys } from "@/features/operations/operations-query-keys";
 
 export interface CacheSnapshot {
@@ -17,16 +24,14 @@ export async function snapshotAndOptimisticallyUpdate(
   shipmentId: string,
   change: OptimisticChange,
 ) {
-  await Promise.all([
-    queryClient.cancelQueries({ queryKey: operationsKeys.shipments() }),
-    queryClient.cancelQueries({ queryKey: operationsKeys.detail(shipmentId) }),
-  ]);
+  await queryClient.cancelQueries({ queryKey: operationsKeys.shipments() });
 
   const listEntries = queryClient.getQueriesData<ShipmentListResponse>({
     queryKey: operationsKeys.lists(),
   });
   const detailKey = operationsKeys.detail(shipmentId);
   const detail = queryClient.getQueryData<ShipmentDetails>(detailKey);
+  const optimisticOverlay = toOptimisticOverlay(change);
   const entries: CacheSnapshot["entries"] = listEntries
     .filter((entry): entry is [QueryKey, ShipmentListResponse] =>
       Boolean(entry[1]?.items.some(({ id }) => id === shipmentId)),
@@ -41,7 +46,7 @@ export async function snapshotAndOptimisticallyUpdate(
         ...data,
         items: data.items.map((shipment) =>
           shipment.id === shipmentId
-            ? applyOptimisticChange(shipment, change)
+            ? applyOptimisticOverlay(shipment, optimisticOverlay)
             : shipment,
         ),
         summary: updateSummary(
@@ -53,7 +58,7 @@ export async function snapshotAndOptimisticallyUpdate(
     } else {
       queryClient.setQueryData<ShipmentDetails>(
         queryKey,
-        applyOptimisticChange(data as ShipmentDetails, change),
+        applyOptimisticOverlay(data as ShipmentDetails, optimisticOverlay),
       );
     }
   }
@@ -66,13 +71,11 @@ export async function snapshotAndOptimisticallyUpdate(
 
   if (!base) throw new Error("Shipment is not available in the query cache.");
 
-  return { snapshot: { entries }, expectedVersion: base.version };
-}
-
-export function toOptimisticOverlay(change: OptimisticChange) {
-  return change.type === "acknowledge"
-    ? ({ status: "ACKNOWLEDGED" as const } as const)
-    : ({ assignedTo: change.operator } as const);
+  return {
+    rollbackSnapshot: { entries },
+    baseVersion: base.version,
+    optimisticOverlay,
+  };
 }
 
 export function restoreCacheSnapshot(
@@ -103,15 +106,19 @@ export function reconcileCanonicalShipment(
   );
 }
 
-function applyOptimisticChange<T extends Shipment>(
+function toOptimisticOverlay(change: OptimisticChange) {
+  return change.type === "acknowledge"
+    ? ({ status: "ACKNOWLEDGED" as const } as const)
+    : ({ assignedTo: change.operator } as const);
+}
+
+function applyOptimisticOverlay<T extends Shipment>(
   shipment: T,
-  change: OptimisticChange,
+  overlay: ReturnType<typeof toOptimisticOverlay>,
 ): T {
   return {
     ...shipment,
-    ...(change.type === "acknowledge"
-      ? { status: "ACKNOWLEDGED" as const }
-      : { assignedTo: change.operator }),
+    ...overlay,
   };
 }
 
@@ -143,14 +150,4 @@ function isListResponse(data: unknown): data is ShipmentListResponse {
     "items" in data &&
     Array.isArray(data.items)
   );
-}
-
-function toShipment(details: ShipmentDetails): Shipment {
-  const {
-    exception: _exception,
-    recentEvents: _recentEvents,
-    statusHistory: _statusHistory,
-    ...shipment
-  } = details;
-  return shipment;
 }

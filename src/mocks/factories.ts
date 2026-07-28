@@ -1,12 +1,13 @@
-import type { Operator } from "@/domain/operator";
 import type {
-  ExceptionType,
+  Operator,
   ShipmentDetails,
-  ShipmentPriority,
   ShipmentStatus,
 } from "@/domain/shipment";
-import { EXCEPTION_TYPES, SHIPMENT_PRIORITIES } from "@/domain/shipment";
-import { PORT_CODES } from "@/domain/port";
+import {
+  EXCEPTION_TYPES,
+  PORT_CODES,
+  SHIPMENT_PRIORITIES,
+} from "@/domain/shipment";
 
 const BASE_TIME = Date.parse("2026-07-21T12:00:00.000Z");
 
@@ -42,12 +43,10 @@ export function createShipments(
     const idNumber = 100_000 + index;
     const id = `SHP-${idNumber}`;
     const status = statusFor(index);
-    const priority = SHIPMENT_PRIORITIES[
-      Math.floor(random() * SHIPMENT_PRIORITIES.length)
-    ] as ShipmentPriority;
-    const exceptionType = EXCEPTION_TYPES[
-      Math.floor(random() * EXCEPTION_TYPES.length)
-    ] as ExceptionType;
+    const priority =
+      SHIPMENT_PRIORITIES[Math.floor(random() * SHIPMENT_PRIORITIES.length)]!;
+    const exceptionType =
+      EXCEPTION_TYPES[Math.floor(random() * EXCEPTION_TYPES.length)]!;
     const originPort = PORT_CODES[index % PORT_CODES.length];
     const destinationPort = PORT_CODES[(index * 3 + 1) % PORT_CODES.length];
     const assignedTo =

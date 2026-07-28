@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { ApiClientError } from "@/api/errors";
 import { createAppQueryClient } from "@/app/query-client";
-import { ApiClientError } from "@/domain/errors";
 
 describe("query client resilience policy", () => {
   it("retries bounded retryable reads but not 4xx or validation errors", () => {

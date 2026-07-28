@@ -1,4 +1,4 @@
-import type { Operator } from "@/domain/operator";
+import { z } from "zod";
 
 export const SHIPMENT_STATUSES = ["OPEN", "ACKNOWLEDGED", "RESOLVED"] as const;
 export const SHIPMENT_PRIORITIES = [
@@ -14,68 +14,84 @@ export const EXCEPTION_TYPES = [
   "CONTAINER_NOT_ASSIGNED",
   "PORT_CONGESTION",
 ] as const;
+export const PORT_CODES = [
+  "IRBND",
+  "CNSHA",
+  "NLRTM",
+  "SGSIN",
+  "AEJEA",
+  "DEHAM",
+  "USLAX",
+  "BRSSZ",
+] as const;
+export const SHIPMENT_EVENT_TYPES = [
+  "SHIPMENT_UPDATED",
+  "SHIPMENT_ACKNOWLEDGED",
+  "SHIPMENT_ASSIGNED",
+] as const;
 
 export type ShipmentStatus = (typeof SHIPMENT_STATUSES)[number];
 export type ShipmentPriority = (typeof SHIPMENT_PRIORITIES)[number];
 export type ExceptionType = (typeof EXCEPTION_TYPES)[number];
+export type PortCode = (typeof PORT_CODES)[number];
+export type ShipmentEventType = (typeof SHIPMENT_EVENT_TYPES)[number];
 
-export interface Shipment {
-  id: string;
-  shipmentNumber: string;
-  originPort: string;
-  destinationPort: string;
-  eta: string;
-  exceptionType: ExceptionType;
-  priority: ShipmentPriority;
-  status: ShipmentStatus;
-  assignedTo: Operator | null;
-  version: number;
-  updatedAt: string;
-}
+export const operatorSchema = z.strictObject({
+  id: z.string().min(1),
+  name: z.string().min(1),
+});
 
-export interface StatusHistoryEntry {
-  id: string;
-  from: ShipmentStatus | null;
-  to: ShipmentStatus;
-  at: string;
-  actor: string;
-}
+export const shipmentSchema = z.strictObject({
+  id: z.string().min(1),
+  shipmentNumber: z.string().min(1),
+  originPort: z.string().min(1),
+  destinationPort: z.string().min(1),
+  eta: z.iso.datetime(),
+  exceptionType: z.enum(EXCEPTION_TYPES),
+  priority: z.enum(SHIPMENT_PRIORITIES),
+  status: z.enum(SHIPMENT_STATUSES),
+  assignedTo: operatorSchema.nullable(),
+  version: z.number().int().positive(),
+  updatedAt: z.iso.datetime(),
+});
 
-export type ShipmentEventType =
-  "SHIPMENT_UPDATED" | "SHIPMENT_ACKNOWLEDGED" | "SHIPMENT_ASSIGNED";
+export const statusHistoryEntrySchema = z.strictObject({
+  id: z.string().min(1),
+  from: z.enum(SHIPMENT_STATUSES).nullable(),
+  to: z.enum(SHIPMENT_STATUSES),
+  at: z.iso.datetime(),
+  actor: z.string().min(1),
+});
 
-export interface ShipmentEventRecord {
-  eventId: string;
-  type: ShipmentEventType;
-  timestamp: string;
-  summary: string;
-  version: number;
-}
+export const shipmentEventRecordSchema = z.strictObject({
+  eventId: z.string().min(1),
+  type: z.enum(SHIPMENT_EVENT_TYPES),
+  timestamp: z.iso.datetime(),
+  summary: z.string().min(1),
+  version: z.number().int().positive(),
+});
 
-export interface ShipmentRealtimeEvent {
-  eventId: string;
-  shipmentId: string;
-  version: number;
-  type: "SHIPMENT_UPDATED";
-  timestamp: string;
-  payload: Partial<
-    Pick<
-      Shipment,
-      | "eta"
-      | "exceptionType"
-      | "priority"
-      | "status"
-      | "assignedTo"
-      | "updatedAt"
-    >
-  >;
-}
+export const shipmentDetailsSchema = shipmentSchema.extend({
+  exception: z.strictObject({
+    description: z.string().min(1),
+    detectedAt: z.iso.datetime(),
+  }),
+  statusHistory: z.array(statusHistoryEntrySchema),
+  recentEvents: z.array(shipmentEventRecordSchema).max(5),
+});
 
-export interface ShipmentDetails extends Shipment {
-  exception: {
-    description: string;
-    detectedAt: string;
-  };
-  statusHistory: StatusHistoryEntry[];
-  recentEvents: ShipmentEventRecord[];
+export type Operator = z.infer<typeof operatorSchema>;
+export type Shipment = z.infer<typeof shipmentSchema>;
+export type StatusHistoryEntry = z.infer<typeof statusHistoryEntrySchema>;
+export type ShipmentEventRecord = z.infer<typeof shipmentEventRecordSchema>;
+export type ShipmentDetails = z.infer<typeof shipmentDetailsSchema>;
+
+export function toShipment(details: ShipmentDetails): Shipment {
+  const {
+    exception: _exception,
+    recentEvents: _recentEvents,
+    statusHistory: _statusHistory,
+    ...shipment
+  } = details;
+  return shipment;
 }

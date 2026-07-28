@@ -1,9 +1,10 @@
 import { QueryClient } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import type { ShipmentListResponse } from "@/domain/contracts";
-import type { Shipment, ShipmentRealtimeEvent } from "@/domain/shipment";
+import type { ShipmentListResponse } from "@/api/shipment-contracts";
+import type { Shipment } from "@/domain/shipment";
 import { operationsKeys } from "@/features/operations/operations-query-keys";
+import type { ShipmentRealtimeEvent } from "@/realtime/contracts";
 import { ReconciliationRegistry } from "@/realtime/reconciliation-registry";
 import { reconcileShipmentEvent } from "@/realtime/reconcile-shipment-event";
 
@@ -101,6 +102,27 @@ describe("reconcileShipmentEvent", () => {
     expect(queryClient.getQueryData(operationsKeys.list(listParams))).toBe(
       cached,
     );
+
+    expect(
+      reconcileShipmentEvent(
+        event({ eventId: "event-19", version: 19 }),
+        queryClient,
+        registry,
+      ),
+    ).toEqual({ accepted: true });
+    const newerCache = queryClient.getQueryData(
+      operationsKeys.list(listParams),
+    );
+    expect(
+      reconcileShipmentEvent(
+        event({ eventId: "event-18-late", version: 18 }),
+        queryClient,
+        registry,
+      ),
+    ).toEqual({ accepted: false, reason: "stale" });
+    expect(queryClient.getQueryData(operationsKeys.list(listParams))).toBe(
+      newerCache,
+    );
   });
 
   it("applies a newer event and preserves unrelated row references", () => {
@@ -109,7 +131,7 @@ describe("reconcileShipmentEvent", () => {
       operationsKeys.list(listParams),
     )!;
 
-    expect(result).toMatchObject({ accepted: true, visible: true });
+    expect(result).toEqual({ accepted: true });
     expect(data.items[0]).toMatchObject({
       priority: "CRITICAL",
       version: 18,
@@ -125,7 +147,7 @@ describe("reconcileShipmentEvent", () => {
       registry,
     );
 
-    expect(result).toMatchObject({ accepted: true, visible: false });
+    expect(result).toEqual({ accepted: true });
     expect(queryClient.getQueryData(operationsKeys.detail("hidden"))).toBe(
       undefined,
     );

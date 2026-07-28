@@ -1,7 +1,7 @@
 import { Outlet } from "react-router";
 
+import { USER_ROLES } from "@/auth/permissions";
 import { useRole } from "@/auth/role-context";
-import { USER_ROLES } from "@/auth/role";
 
 export function AppShell() {
   const { role, setRole } = useRole();

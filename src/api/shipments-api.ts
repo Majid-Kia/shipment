@@ -2,14 +2,15 @@ import type {
   AcknowledgeShipmentRequest,
   AssignShipmentRequest,
   ShipmentListParams,
-} from "@/domain/contracts";
+} from "@/api/shipment-contracts";
+import type { UserRole } from "@/auth/permissions";
 import {
-  shipmentDetailsSchema,
+  operatorsResponseSchema,
   shipmentListResponseSchema,
   shipmentMutationResponseSchema,
-} from "@/domain/schemas";
+} from "@/api/shipment-contracts";
 import { request } from "@/api/http-client";
-import type { UserRole } from "@/auth/role";
+import { shipmentDetailsSchema } from "@/domain/shipment";
 
 function toSearchParams(params: ShipmentListParams) {
   const searchParams = new URLSearchParams({
@@ -35,6 +36,10 @@ export function getShipments(params: ShipmentListParams, signal?: AbortSignal) {
 
 export function getShipment(id: string, signal?: AbortSignal) {
   return request(`/api/shipments/${id}`, shipmentDetailsSchema, { signal });
+}
+
+export function getOperators(signal?: AbortSignal) {
+  return request("/api/operators", operatorsResponseSchema, { signal });
 }
 
 export function acknowledgeShipment(

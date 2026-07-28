@@ -62,7 +62,11 @@ function ShipmentDetailsBody({
 }: ShipmentDetailsBodyProps) {
   if (isPending) {
     return (
-      <div aria-label="Loading shipment details" className="space-y-4 p-6">
+      <div
+        aria-label="Loading shipment details"
+        className="space-y-4 p-6"
+        role="status"
+      >
         {Array.from({ length: 5 }, (_, index) => (
           <Skeleton className="h-20" key={index} />
         ))}

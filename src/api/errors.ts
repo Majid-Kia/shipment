@@ -1,4 +1,4 @@
-import type { ErrorCode } from "@/domain/contracts";
+import type { ErrorCode } from "@/api/shipment-contracts";
 
 export type AppError =
   | {

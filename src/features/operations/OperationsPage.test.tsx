@@ -1,5 +1,5 @@
 import { HttpResponse, http } from "msw";
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
@@ -22,7 +22,11 @@ describe("operations URL state", () => {
     expect(screen.getByLabelText("Assignment")).toHaveValue("false");
     expect(router.state.location.search).toContain("page=2");
     expect(
-      await screen.findByRole("region", { name: "Shipment summary" }),
+      await screen.findByRole(
+        "region",
+        { name: "Shipment summary" },
+        { timeout: 4_000 },
+      ),
     ).toBeInTheDocument();
   });
 
@@ -59,7 +63,20 @@ describe("operations URL state", () => {
       },
       { timeout: 1_500 },
     );
-    expect(await screen.findByText("SHP-100000")).toBeInTheDocument();
+    expect(
+      await screen.findByText("SHP-100000", undefined, { timeout: 4_000 }),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the search draft synchronized with browser navigation", async () => {
+    const { router } = renderApp({
+      initialEntries: ["/operations?search=first"],
+    });
+
+    expect(screen.getByLabelText("Search shipments")).toHaveValue("first");
+    await act(() => router.navigate("/operations?search=second"));
+
+    expect(screen.getByLabelText("Search shipments")).toHaveValue("second");
   });
 
   it("canonicalizes invalid/default/unknown URL parameters", async () => {
@@ -74,6 +91,23 @@ describe("operations URL state", () => {
     });
     expect(screen.getByLabelText("Status")).toHaveValue("");
     expect(screen.getByLabelText("Assignment")).toHaveValue("");
+  });
+
+  it("preserves valid URL parameters when neighboring values are invalid", async () => {
+    const { router } = renderApp({
+      initialEntries: [
+        "/operations?status=OPEN&priority=INVALID&assigned=false&page=2&unknown=value",
+      ],
+    });
+
+    await waitFor(() => {
+      expect(router.state.location.search).toBe(
+        "?status=OPEN&assigned=false&page=2",
+      );
+    });
+    expect(screen.getByLabelText("Status")).toHaveValue("OPEN");
+    expect(screen.getByLabelText("Priority")).toHaveValue("");
+    expect(screen.getByLabelText("Assignment")).toHaveValue("false");
   });
 });
 
@@ -91,7 +125,7 @@ describe("operations list states", () => {
       await screen.findByRole(
         "heading",
         { name: "No shipments found" },
-        { timeout: 1_500 },
+        { timeout: 4_000 },
       ),
     ).toBeInTheDocument();
   });

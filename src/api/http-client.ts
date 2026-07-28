@@ -1,7 +1,7 @@
 import { ZodError, type ZodType } from "zod";
 
-import { ApiClientError } from "@/domain/errors";
-import { apiErrorBodySchema } from "@/domain/schemas";
+import { ApiClientError } from "@/api/errors";
+import { apiErrorBodySchema } from "@/api/shipment-contracts";
 
 interface RequestOptions {
   body?: unknown;

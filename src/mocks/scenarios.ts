@@ -12,6 +12,7 @@ const state: MutationFailureState = {
   forcedResult: null,
   randomState: DEFAULT_RANDOM_STATE,
 };
+const mutationPreflightListeners = new Set<() => void>();
 
 function nextRandom() {
   state.randomState = (state.randomState * 1_664_525 + 1_013_904_223) >>> 0;
@@ -39,6 +40,17 @@ export function getMutationDelay() {
   return state.delay;
 }
 
+export function waitForNextMutationPreflight() {
+  return new Promise<void>((resolve) => {
+    mutationPreflightListeners.add(resolve);
+  });
+}
+
+export function notifyMutationPreflight() {
+  for (const listener of mutationPreflightListeners) listener();
+  mutationPreflightListeners.clear();
+}
+
 export function setMutationDelay(delay: number) {
   state.delay = delay;
 }
@@ -52,4 +64,5 @@ export function resetMutationScenarios() {
   state.failureRate = 0.2;
   state.forcedResult = null;
   state.randomState = DEFAULT_RANDOM_STATE;
+  mutationPreflightListeners.clear();
 }

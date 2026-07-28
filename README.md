@@ -6,15 +6,17 @@ optimistic operator actions, and reconciling simulated realtime updates.
 
 ## Setup and commands
 
-Requirements: a current Node.js LTS release and npm.
+Requirements: Node.js `^20.19.0` or `>=22.12.0`, plus npm.
 
 ```bash
-npm install
+npm ci
 npm run dev
 ```
 
 Vite prints the local development URL. The default mocked role is `OPERATOR`;
-the role control can switch to `VIEWER`.
+the role control can switch to `VIEWER`. MSW and the realtime simulator start
+with the app in development; there are no environment variables, separate
+backend process, or hidden setup steps.
 
 Validation:
 
@@ -25,6 +27,8 @@ npm run typecheck
 npm run test
 npm run build
 ```
+
+`npm run lint` runs ESLint with TypeScript, React Hooks, and Fast Refresh rules.
 
 ## Architecture overview
 
@@ -37,9 +41,24 @@ MSW repository -> mock event source -> validated reconciler -> query cache
 local selection/role/connection state --------------------> React UI
 ```
 
-- `src/domain` contains the shipment contracts and strict Zod boundary schemas.
-- `src/api` owns typed HTTP access and error normalization.
-- `src/mocks` owns the deterministic 5,000-record repository and MSW handlers.
+```text
+src/
+  app/                  application composition, router, QueryClient
+  api/                  HTTP client, API contracts, boundary validation
+  auth/                 role context and capability rules
+  components/ui/        presentation primitives
+  domain/               shipment model, constants, core schemas
+  features/operations/  board UI, queries, mutations, cache coordination
+  mocks/                MSW, repository, scenarios, realtime simulator
+  realtime/             protocol contracts, registry, reconciliation
+  test/                 shared test setup and rendering helpers
+```
+
+- `src/domain` contains the shipment model, constants, and core Zod schemas.
+- `src/api` owns typed HTTP access, request/response schemas, and error
+  normalization.
+- `src/mocks` owns the deterministic 5,000-record repository, MSW handlers,
+  scenarios, and timer-based realtime implementation.
 - `src/realtime` owns transport, connection state, event validation,
   deduplication, version ordering, and cache reconciliation.
 - `src/features/operations` owns the board UI, query keys/hooks, optimistic
@@ -86,13 +105,13 @@ bounded exponential delay. Validation and 4xx errors are not retried.
 Mutations are never automatically retried. Initial, background, detail,
 operator, and mutation failures retain unaffected UI and expose actionable
 messages. When realtime disconnects, existing data and actions remain usable,
-polling increases from 60 to 15 seconds, and reconnect invalidates lists plus
-the observed detail query.
+the polling interval shortens from 60 to 15 seconds, and reconnect invalidates
+lists plus the observed detail query.
 
 The mock API filters, summarizes, sorts, and paginates server-side. Only 50 rows
 are transferred/rendered. Searches are debounced and obsolete requests are
 abortable. Realtime cache work scans only cached pages, preserves unaffected
-references, batches list invalidation, and memoizes the measured row hot path.
+references, batches list invalidation, and memoizes only the row component.
 The mock repository's linear scan is acceptable for 5,000 in-memory records;
 100,000 production records would require indexed backend queries, cursor
 pagination, and likely row virtualization for larger client windows.
@@ -143,10 +162,10 @@ snapshot-plus-event reconstruction.
 ### What changes for 100,000 shipments?
 
 Filtering, sorting, and summaries move to an indexed persistent backend with
-cursor pagination. Event routing would use a broker and durable sequence/checkpoint
-semantics. The browser would retain bounded pages, virtualize larger windows,
-and receive versioned response envelopes to merge independently racing snapshot
-and event services.
+cursor pagination. Event routing would use a broker and durable
+sequence/checkpoint semantics. The browser would retain bounded pages,
+virtualize larger windows, and receive versioned response envelopes to merge
+independently racing snapshot and event services.
 
 ### How would production authentication and authorization be introduced?
 
@@ -166,7 +185,7 @@ production backend, or full E2E suite.
 ### What would improve with one additional working day?
 
 Add Playwright smoke coverage, an automated React Profiler regression harness,
-production-style accessibility auditing, chunk splitting, and more exhaustive
+browser-based accessibility auditing, chunk splitting, and more exhaustive
 property-based reconciliation tests.
 
 ## Known limitations and incomplete items
@@ -181,9 +200,6 @@ property-based reconciliation tests.
   authoritative refetch.
 - The production bundle exceeds Vite's default 500 kB warning threshold; route
   splitting was deferred because this is a single-screen assignment.
-- The repository uses Oxlint (an Oxc-based linter) rather than ESLint. The
-  `npm run lint` quality gate is fully configured, but this is a literal tooling
-  deviation from the assignment's named ESLint requirement.
 - No required functional item is knowingly incomplete.
 
 Approximate implementation time: **18 hours** across architecture, contracts,

@@ -2,9 +2,57 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { useRealtimeConnectionState } from "@/realtime/realtime-context";
-import { RealtimeProvider } from "@/realtime/realtime-provider";
-import { ManualShipmentEventSource } from "@/realtime/shipment-event-source";
+import type {
+  RealtimeConnectionState,
+  ShipmentEventSource,
+} from "@/realtime/contracts";
+import {
+  RealtimeProvider,
+  useRealtimeConnectionState,
+} from "@/realtime/realtime-provider";
+
+class ManualShipmentEventSource implements ShipmentEventSource {
+  private eventListeners = new Set<(event: unknown) => void>();
+  private connectionListeners = new Set<
+    (state: RealtimeConnectionState) => void
+  >();
+  private state: RealtimeConnectionState = "disconnected";
+
+  connect() {
+    this.setConnectionState("connected");
+  }
+
+  disconnect() {
+    this.setConnectionState("disconnected");
+  }
+
+  subscribe(listener: (event: unknown) => void) {
+    this.eventListeners.add(listener);
+    return () => {
+      this.eventListeners.delete(listener);
+    };
+  }
+
+  subscribeToConnection(listener: (state: RealtimeConnectionState) => void) {
+    this.connectionListeners.add(listener);
+    return () => {
+      this.connectionListeners.delete(listener);
+    };
+  }
+
+  getConnectionState() {
+    return this.state;
+  }
+
+  emit(event: unknown) {
+    for (const listener of this.eventListeners) listener(event);
+  }
+
+  setConnectionState(state: RealtimeConnectionState) {
+    this.state = state;
+    for (const listener of this.connectionListeners) listener(state);
+  }
+}
 
 function StateProbe() {
   return <span>{useRealtimeConnectionState()}</span>;

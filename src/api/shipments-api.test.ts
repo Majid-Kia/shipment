@@ -1,10 +1,10 @@
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
-import { getOperators } from "@/api/operators-api";
 import {
   acknowledgeShipment,
   assignShipment,
+  getOperators,
   getShipment,
   getShipments,
 } from "@/api/shipments-api";
@@ -101,6 +101,21 @@ describe("shipment API", () => {
       id: "OP-01",
       name: "Operator 01",
     });
+  });
+
+  it("rejects viewer mutations without changing server state", async () => {
+    const before = await getShipment("SHP-100000");
+
+    await expect(
+      acknowledgeShipment(
+        before.id,
+        { expectedVersion: before.version },
+        "VIEWER",
+      ),
+    ).rejects.toMatchObject({
+      appError: { code: "FORBIDDEN", status: 403 },
+    });
+    expect(await getShipment(before.id)).toEqual(before);
   });
 
   it("supports deterministic mutation failure without changing server state", async () => {

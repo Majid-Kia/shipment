@@ -1,10 +1,9 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
-import { getShipment, getShipments } from "@/api/shipments-api";
-import { getOperators } from "@/api/operators-api";
-import type { ShipmentListParams } from "@/domain/contracts";
+import { getOperators, getShipment, getShipments } from "@/api/shipments-api";
+import type { ShipmentListParams } from "@/api/shipment-contracts";
 import { operationsKeys } from "@/features/operations/operations-query-keys";
-import { useRealtimeConnectionState } from "@/realtime/realtime-context";
+import { useRealtimeConnectionState } from "@/realtime/realtime-provider";
 
 export function useShipmentsQuery(params: ShipmentListParams) {
   const connectionState = useRealtimeConnectionState();
@@ -19,7 +18,7 @@ export function useShipmentsQuery(params: ShipmentListParams) {
 export function useShipmentDetailsQuery(id: string | null) {
   return useQuery({
     queryKey: operationsKeys.detail(id ?? ""),
-    queryFn: ({ signal }) => getShipment(id!, signal),
+    queryFn: ({ signal }) => getShipment(id ?? "", signal),
     enabled: id !== null,
   });
 }

@@ -1,25 +1,26 @@
-# Initial Architectural Decisions
+# Architectural Decisions
 
-Human-reviewed choices are marked **Accepted**; remaining initial choices stay **Proposed** until implementation begins. All decisions optimize for the assignment's 15–20 hour limit and should be revisited if product/backend facts differ.
+These implemented decisions optimize for the assignment's 15–20 hour limit and
+should be revisited if product or backend constraints differ.
 
 ## ADR-001: Use feature-oriented modules with explicit domain and transport boundaries
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Decision:** Organize product code around the operations feature, with shared `domain`, `api`, `realtime`, `auth`, and `mocks` boundaries. UI consumes hooks/API contracts and never imports the mock database.
 - **Rationale:** This keeps a focused vertical slice easy to navigate while separating business rules, server access, protocol reconciliation, and presentation. It avoids both a flat component directory and premature multi-package architecture.
 - **Consequences:** Pure domain/reconciliation modules can be tested cheaply. Some feature-specific cache helpers stay near the feature rather than becoming misleading global abstractions.
 
 ## ADR-002: Assign state to TanStack Query, React Router, local React, and a narrow reconciliation registry
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Decision:** TanStack Query owns server snapshots; Router owns only required shareable filters and page; local React owns selected shipment, details-sheet state, and other transient interaction state; an injected non-rendering registry owns event high-water marks, deduplication, pending mutation overlays, and ordered event patches received during a pending mutation.
 - **Rationale:** Each state type has different lifecycle and consistency needs. Redux/Zustand would duplicate Query/Router state and add synchronization paths without solving a requirement.
-- **Consequences:** The registry needs explicit reset/cleanup in tests and app lifecycle. Only connection UI subscribes to transport state, limiting render fan-out.
+- **Consequences:** The registry is scoped to a `QueryClient` and held weakly; tests use isolated clients or registries. Only connection UI subscribes to transport state, limiting render fan-out.
 
 ## ADR-003: Use server-side page-number pagination with 50 rows
 
-- **Status:** Proposed
-- **Decision:** MSW filters, sorts, summarizes, and slices the full repository; the UI uses TanStack Table manual pagination with a fixed page size of 50.
+- **Status:** Accepted
+- **Decision:** MSW filters, sorts, summarizes, and slices the full repository; the UI uses a semantic table with page-number controls and a fixed page size of 50.
 - **Rationale:** It bounds DOM/query work, gives stable shareable pages, and is substantially simpler than virtualization or infinite scrolling at this data volume.
 - **Alternatives rejected:** Virtualization adds measurement/accessibility/test complexity to only 50 rows. Infinite scrolling weakens URL restoration and deterministic navigation.
 - **Consequences:** Realtime membership/order changes are corrected by debounced refetch. At 100,000 records the real backend needs indexes and may move to cursor pagination.
@@ -33,15 +34,15 @@ Human-reviewed choices are marked **Accepted**; remaining initial choices stay *
 
 ## ADR-005: Validate untrusted boundaries with Zod
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Decision:** Validate URL params, API responses/request bodies, and realtime messages. Do not parse internal values repeatedly.
 - **Rationale:** Realtime and mock HTTP are runtime boundaries where malformed data could corrupt a versioned cache. Selective use preserves clarity and performance.
 - **Consequences:** Domain types should be inferred from or checked against schemas to avoid drift; validation errors become typed non-retryable application errors.
 
-## ADR-006: Keep list and detail caches separate and patch them through one cache index
+## ADR-006: Keep list and detail caches separate and patch them through focused cache helpers
 
-- **Status:** Proposed
-- **Decision:** Use structured keys for paginated lists and per-ID details. A shared helper enumerates and immutably patches every cached representation containing an entity.
+- **Status:** Accepted
+- **Decision:** Use structured keys for paginated lists and per-ID details. Focused helpers enumerate and immutably patch every cached representation containing an entity.
 - **Rationale:** TanStack Query is not a normalized store, but realtime and optimistic behavior must remain consistent across list/detail representations.
 - **Consequences:** Membership, ordering, totals, and summaries cannot always be derived from partial events, so relevant list queries are invalidated after immediate entity patches. Untouched references must be preserved.
 
@@ -54,28 +55,28 @@ Human-reviewed choices are marked **Accepted**; remaining initial choices stay *
 
 ## ADR-008: Roll back snapshots, then reapply newer accepted realtime truth
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Decision:** Snapshot all affected query entries before mutation. Retain accepted partial events during the mutation in version order. On failure restore snapshots, remove the overlay, then replay newer accepted events. On a delayed successful response, use the complete response as its versioned causal base and replay all later event patches, never replacing a higher-version entity wholesale with the older response.
 - **Rationale:** A plain rollback would erase server updates received while the request was pending. A plain invalidation would leave a false optimistic state until the network responds.
 - **Consequences:** The mutation coordinator and realtime reconciler share a registry. Tests must cover delayed-success response, 409 conflict, and 503 rollback races. A 409 also invalidates immediately.
 
 ## ADR-009: Use entity version high-water marks and a bounded event-ID LRU
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Decision:** Reject duplicate event IDs and events with versions less than or equal to the confirmed per-entity version. Retain at most 1,000 recent event IDs with TTL/LRU behavior.
 - **Rationale:** Version checks handle reordering but do not identify exact retransmissions for diagnostics; event IDs handle duplicates but cannot reject a different stale event. Both are needed and must be bounded.
 - **Consequences:** Events for uncached entities update metadata only. Reconnect invalidation provides eventual convergence.
 
 ## ADR-010: Simulate realtime behind a transport interface and share the MSW repository
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Decision:** Implement a small `ShipmentEventSource` interface with a timer-based browser source and a manual test source. The simulator mutates the same in-memory repository before emitting.
 - **Rationale:** The UI/reconciler should not depend on timer implementation, and subsequent HTTP refetch must agree with emitted events.
 - **Consequences:** Strict Mode-safe idempotent cleanup is mandatory. Tests avoid nondeterministic timers.
 
 ## ADR-011: Refetch on reconnect and for list-derived aggregates
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Decision:** Patch visible entities immediately, then debounce list invalidation when filter membership/order/summary may change. On reconnect invalidate lists and the open detail; poll more frequently while disconnected.
 - **Rationale:** Partial events cannot reliably maintain every filtered cached page and aggregate, especially for invisible entities. Refetch makes the mock API the convergence authority.
 - **Consequences:** There can be a short interval where a row is patched but totals/order await refetch. Existing content remains usable during errors.
@@ -89,28 +90,28 @@ Human-reviewed choices are marked **Accepted**; remaining initial choices stay *
 
 ## ADR-012: Optimize measured hot paths, not every component
 
-- **Status:** Proposed
-- **Decision:** Bound rows to 50, abort obsolete searches, preserve object references, batch event bursts, coalesce by entity, and memoize only the row hot path. Profile before adding more memoization.
+- **Status:** Accepted
+- **Decision:** Bound rows to 50, abort obsolete searches, preserve object references, debounce list invalidation, and memoize only the row hot path. Profile before adding more memoization.
 - **Rationale:** These choices reduce algorithmic work and render fan-out. Blanket hooks obscure code and do not demonstrate a real optimization.
-- **Consequences:** A reference-preservation test and React Profiler check are part of hardening.
+- **Consequences:** Reference preservation is regression-tested. Automated React Profiler regression checks remain future work.
 
 ## ADR-013: Use a capability map for mocked roles and enforce it in MSW too
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Decision:** VIEWER has view capability; OPERATOR additionally has acknowledge and assign. UI gates are backed by 403 behavior in mock mutation handlers.
 - **Rationale:** The assignment requires clear acknowledgement that UI hiding is not authorization. Handler enforcement demonstrates the correct boundary without implementing authentication.
 - **Consequences:** The mock role header is explicitly a demo mechanism. Production would validate authenticated claims server-side.
 
 ## ADR-014: No automatic mutation retries
 
-- **Status:** Proposed
-- **Decision:** Retry read queries at most twice only for network/5xx failures; never automatically retry mutations. Provide explicit user Retry.
+- **Status:** Accepted
+- **Decision:** Retry read queries at most twice only for network/5xx failures; never automatically retry mutations. A user may explicitly issue another valid action after an error.
 - **Rationale:** Automatic mutation replay can duplicate intent and complicate version conflicts. Reads are safe and benefit from bounded recovery.
-- **Consequences:** Transient mutation errors are visible sooner, followed by deterministic rollback.
+- **Consequences:** Transient mutation errors are visible sooner, followed by deterministic rollback. A later explicit user action clears the previous error.
 
 ## ADR-015: Keep scope to a testable vertical slice
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Decision:** Do not add Redux, Zustand, Axios, virtualization, Playwright, persistent offline queues, or elaborate design-system work unless must-haves finish early and evidence justifies them.
 - **Rationale:** The weighted criteria reward architecture, cache/realtime correctness, performance reasoning, and tests more than breadth or polish.
 - **Consequences:** Optional enhancements and production extensions are documented rather than half-built.
@@ -146,6 +147,13 @@ Human-reviewed choices are marked **Accepted**; remaining initial choices stay *
 ## ADR-020: Use Prettier for formatting
 
 - **Status:** Accepted
-- **Decision:** Add Prettier as a development dependency and configure `format`/`format:check` during Phase 0, not during this documentation-only revision.
-- **Rationale:** The assignment requires code formatting and the repository currently has no formatter.
-- **Consequences:** Prettier configuration and scripts are Phase 0 definition-of-done items.
+- **Decision:** Use Prettier through the `format` and `format:check` scripts.
+- **Rationale:** The assignment requires code formatting, and a deterministic script avoids relying on editor-specific behavior.
+- **Consequences:** Formatting remains an explicit quality gate rather than an implicit editor setting.
+
+## ADR-021: Use ESLint as the single linting tool
+
+- **Status:** Accepted
+- **Decision:** `npm run lint` runs ESLint with TypeScript, React Hooks, and Fast Refresh rules.
+- **Rationale:** ESLint is a named assignment requirement, and a second linter would duplicate configuration and diagnostics without adding enough value here.
+- **Consequences:** ESLint is the only lint gate, and narrow rule exceptions require an explanatory comment.

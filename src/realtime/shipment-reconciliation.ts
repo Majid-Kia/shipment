@@ -1,12 +1,9 @@
 import type { QueryClient } from "@tanstack/react-query";
 
-import type { ShipmentListResponse } from "@/domain/contracts";
-import type {
-  Shipment,
-  ShipmentDetails,
-  ShipmentRealtimeEvent,
-} from "@/domain/shipment";
+import type { ShipmentListResponse } from "@/api/shipment-contracts";
+import type { Shipment, ShipmentDetails } from "@/domain/shipment";
 import { operationsKeys } from "@/features/operations/operations-query-keys";
+import type { ShipmentRealtimeEvent } from "@/realtime/contracts";
 import type { OptimisticOverlay } from "@/realtime/reconciliation-registry";
 
 export function mergeRealtimeEvent<T extends Shipment>(
@@ -26,12 +23,10 @@ export function applyEventToCachedShipment(
   event: ShipmentRealtimeEvent,
   overlay?: OptimisticOverlay,
 ) {
-  let visible = false;
   queryClient.setQueryData<ShipmentDetails>(
     operationsKeys.detail(event.shipmentId),
     (shipment) => {
       if (!shipment) return shipment;
-      visible = true;
       return applyOverlay(mergeRealtimeEvent(shipment, event), overlay);
     },
   );
@@ -41,7 +36,6 @@ export function applyEventToCachedShipment(
       if (!data) return data;
       const index = data.items.findIndex(({ id }) => id === event.shipmentId);
       if (index < 0) return data;
-      visible = true;
       const items = data.items.slice();
       items[index] = applyOverlay(
         mergeRealtimeEvent(items[index]!, event),
@@ -50,7 +44,6 @@ export function applyEventToCachedShipment(
       return { ...data, items };
     },
   );
-  return visible;
 }
 
 function applyOverlay<T extends Shipment>(
