@@ -33,7 +33,6 @@ export const SHIPMENT_EVENT_TYPES = [
 export type ShipmentStatus = (typeof SHIPMENT_STATUSES)[number];
 export type ShipmentPriority = (typeof SHIPMENT_PRIORITIES)[number];
 export type ExceptionType = (typeof EXCEPTION_TYPES)[number];
-export type PortCode = (typeof PORT_CODES)[number];
 export type ShipmentEventType = (typeof SHIPMENT_EVENT_TYPES)[number];
 
 export const operatorSchema = z.strictObject({
