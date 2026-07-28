@@ -1,11 +1,6 @@
-import type { QueryClient } from "@tanstack/react-query";
-
-import type { ShipmentListResponse } from "@/api/shipment-contracts";
-import type { ShipmentDetails } from "@/domain/shipment";
-import { operationsKeys } from "@/features/operations/operations-query-keys";
 import { shipmentRealtimeEventSchema } from "@/realtime/contracts";
 import { ReconciliationRegistry } from "@/realtime/reconciliation-registry";
-import { applyEventToCachedShipment } from "@/realtime/shipment-reconciliation";
+import type { ShipmentRealtimeCache } from "@/realtime/shipment-cache";
 
 export type ReconciliationResult =
   | { accepted: true }
@@ -13,7 +8,7 @@ export type ReconciliationResult =
 
 export function reconcileShipmentEvent(
   rawEvent: unknown,
-  queryClient: QueryClient,
+  cache: ShipmentRealtimeCache,
   registry: ReconciliationRegistry,
 ): ReconciliationResult {
   const parsed = shipmentRealtimeEventSchema.safeParse(rawEvent);
@@ -28,7 +23,7 @@ export function reconcileShipmentEvent(
   }
   registry.recordEvent(event.eventId);
 
-  const cachedVersion = findHighestCachedVersion(queryClient, event.shipmentId);
+  const cachedVersion = cache.findHighestVersion(event.shipmentId);
   const confirmedVersion = Math.max(
     registry.getConfirmedVersion(event.shipmentId) ?? 0,
     cachedVersion ?? 0,
@@ -40,26 +35,7 @@ export function reconcileShipmentEvent(
   registry.recordConfirmedVersion(event.shipmentId, event.version);
   const pending = registry.getPendingMutation(event.shipmentId);
   if (pending) registry.recordPendingEvent(event);
-  applyEventToCachedShipment(queryClient, event, pending?.overlay);
+  cache.applyEvent(event, pending?.overlay);
 
   return { accepted: true };
-}
-
-function findHighestCachedVersion(
-  queryClient: QueryClient,
-  shipmentId: string,
-) {
-  let version =
-    queryClient.getQueryData<ShipmentDetails>(operationsKeys.detail(shipmentId))
-      ?.version ?? 0;
-
-  for (const [, data] of queryClient.getQueriesData<ShipmentListResponse>({
-    queryKey: operationsKeys.lists(),
-  })) {
-    version = Math.max(
-      version,
-      data?.items.find(({ id }) => id === shipmentId)?.version ?? 0,
-    );
-  }
-  return version || undefined;
 }

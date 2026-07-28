@@ -35,41 +35,51 @@ npm run build
 The application is a feature-oriented single-page application:
 
 ```text
-URL filters -> operations query hooks -> TanStack Query -> typed API client
-                                                        -> MSW repository
-MSW repository -> mock event source -> validated reconciler -> query cache
-local selection/role/connection state --------------------> React UI
+URL filters -> Operations query hooks -> entity/workflow API gateways
+              -> TanStack Query       -> shared validated HTTP client
+                                      -> MSW repository
+MSW repository -> mock event source -> realtime reconciler
+                                      -> Operations cache adapter -> query cache
+local selection/role/connection state ------------------------------> React UI
 ```
 
 ```text
 src/
-  app/                  application composition, router, QueryClient
-  api/                  HTTP client, API contracts, boundary validation
+  app/                  composition, router, QueryClient, shell, styles
+  shared/               HTTP/error primitives, reusable UI, generic helpers
+  entities/
+    shipment/           Shipment model, schemas, reads, aggregate commands
+    operator/           Operator model and directory endpoint
+  features/operations/
+    api/                 board list contract and endpoint
+    model/               URL/query/mutation/cache orchestration
+    ui/                  page, board, details, filters, table, pagination
   auth/                 role context and capability rules
-  components/ui/        presentation primitives
-  domain/               shipment model, constants, core schemas
-  features/operations/  board UI, queries, mutations, cache coordination
+  realtime/             transport contracts, registry, reconciliation ports
   mocks/                MSW, repository, scenarios, realtime simulator
-  realtime/             protocol contracts, registry, reconciliation
   test/                 shared test setup and rendering helpers
 ```
 
-- `src/domain` contains the shipment model, constants, and core Zod schemas.
-- `src/api` owns typed HTTP access, request/response schemas, and error
-  normalization.
+- `src/shared` contains only reusable technical primitives and has no imports
+  from entities, features, realtime, mocks, or app.
+- `src/entities` owns reusable Shipment and Operator models plus entity-level
+  API gateways.
+- `src/features/operations` owns board-specific list contracts, URL state,
+  query keys/hooks, optimistic mutations, cache coordination, and UI.
 - `src/mocks` owns the deterministic 5,000-record repository, MSW handlers,
   scenarios, and timer-based realtime implementation.
 - `src/realtime` owns transport, connection state, event validation,
-  deduplication, version ordering, and cache reconciliation.
-- `src/features/operations` owns the board UI, query keys/hooks, optimistic
-  mutations, and mutation settlement coordinator.
+  deduplication, version ordering, and the cache port consumed through
+  application composition.
 - `src/auth` owns the mocked role and capability model.
 
 TanStack Query owns server state. URL search parameters own shareable filters
 and pagination. Component state owns ephemeral details selection and form
 values. React contexts own the mocked role and connection status. The
 non-rendering reconciliation registry owns event high-water marks, the bounded
-event-ID LRU, and in-flight mutation metadata.
+event-ID LRU, and in-flight mutation metadata. The Operations feature implements
+the realtime cache port with its existing structured query keys, avoiding a
+realtime-to-feature dependency.
 
 ## Realtime and mutation consistency
 

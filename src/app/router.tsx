@@ -1,7 +1,7 @@
 import { Navigate, type RouteObject, createBrowserRouter } from "react-router";
 
 import { AppShell } from "@/app/shell";
-import { OperationsPage } from "@/features/operations/OperationsPage";
+import { OperationsPage } from "@/features/operations/ui/OperationsPage";
 
 export const appRoutes = [
   {

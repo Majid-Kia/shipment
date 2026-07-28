@@ -1,17 +1,17 @@
 import { HttpResponse, delay, http } from "msw";
 import { z } from "zod";
 
-import type { ApiErrorBody, ErrorCode } from "@/api/shipment-contracts";
+import type { ApiErrorBody, ErrorCode } from "@/shared/api/errors";
 import {
   acknowledgeShipmentRequestSchema,
   assignShipmentRequestSchema,
-} from "@/api/shipment-contracts";
+} from "@/entities/shipment/api/shipment-contracts";
 import {
   EXCEPTION_TYPES,
   SHIPMENT_PRIORITIES,
   SHIPMENT_STATUSES,
   type ShipmentDetails,
-} from "@/domain/shipment";
+} from "@/entities/shipment/model/shipment";
 import { RepositoryError, shipmentRepository } from "@/mocks/database";
 import {
   getMutationDelay,

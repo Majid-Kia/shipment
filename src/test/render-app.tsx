@@ -11,6 +11,7 @@ import { AppProviders } from "@/app/providers";
 import { createAppQueryClient } from "@/app/query-client";
 import { appRoutes } from "@/app/router";
 import type { UserRole } from "@/auth/permissions";
+import { MockShipmentEventSource } from "@/mocks/realtime-source";
 import type { ShipmentEventSource } from "@/realtime/contracts";
 
 interface RenderAppOptions {
@@ -29,7 +30,7 @@ export function renderApp({
     },
   }),
   initialRole,
-  realtimeSource,
+  realtimeSource = new MockShipmentEventSource(),
 }: RenderAppOptions = {}) {
   const router = createMemoryRouter(appRoutes, { initialEntries });
 
@@ -57,8 +58,14 @@ export function renderWithProviders(
     },
   }),
 ) {
+  const realtimeSource = new MockShipmentEventSource();
+
   return {
     queryClient,
-    ...render(<AppProviders queryClient={queryClient}>{ui}</AppProviders>),
+    ...render(
+      <AppProviders queryClient={queryClient} realtimeSource={realtimeSource}>
+        {ui}
+      </AppProviders>,
+    ),
   };
 }

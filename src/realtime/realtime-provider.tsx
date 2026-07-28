@@ -7,13 +7,13 @@ import {
   useState,
 } from "react";
 
-import { operationsKeys } from "@/features/operations/operations-query-keys";
 import type {
   RealtimeConnectionState,
   ShipmentEventSource,
 } from "@/realtime/contracts";
 import { getReconciliationRegistry } from "@/realtime/reconciliation-registry";
 import { reconcileShipmentEvent } from "@/realtime/reconcile-shipment-event";
+import type { ShipmentRealtimeCache } from "@/realtime/shipment-cache";
 
 const RealtimeStateContext =
   createContext<RealtimeConnectionState>("disconnected");
@@ -24,9 +24,11 @@ export function useRealtimeConnectionState() {
 
 export function RealtimeProvider({
   children,
+  cache,
   source,
 }: {
   children: ReactNode;
+  cache: ShipmentRealtimeCache;
   source: ShipmentEventSource;
 }) {
   const queryClient = useQueryClient();
@@ -38,12 +40,10 @@ export function RealtimeProvider({
     let invalidationTimer: ReturnType<typeof setTimeout> | undefined;
     let previousState = source.getConnectionState();
     const unsubscribeEvents = source.subscribe((event) => {
-      const result = reconcileShipmentEvent(event, queryClient, registry);
+      const result = reconcileShipmentEvent(event, cache, registry);
       if (result.accepted && !invalidationTimer) {
         invalidationTimer = setTimeout(() => {
-          void queryClient.invalidateQueries({
-            queryKey: operationsKeys.lists(),
-          });
+          cache.invalidateLists();
           invalidationTimer = undefined;
         }, 250);
       }
@@ -51,13 +51,8 @@ export function RealtimeProvider({
     const unsubscribeConnection = source.subscribeToConnection((state) => {
       setConnectionState(state);
       if (state === "connected" && previousState === "disconnected") {
-        void queryClient.invalidateQueries({
-          queryKey: operationsKeys.lists(),
-        });
-        void queryClient.invalidateQueries({
-          queryKey: operationsKeys.details(),
-          predicate: (query) => query.getObserversCount() > 0,
-        });
+        cache.invalidateLists();
+        cache.invalidateObservedDetails();
       }
       previousState = state;
     });
@@ -69,7 +64,7 @@ export function RealtimeProvider({
       if (invalidationTimer) clearTimeout(invalidationTimer);
       source.disconnect();
     };
-  }, [queryClient, registry, source]);
+  }, [cache, queryClient, registry, source]);
 
   return (
     <RealtimeStateContext value={connectionState}>

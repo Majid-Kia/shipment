@@ -3,12 +3,22 @@
 These implemented decisions optimize for the assignment's 15–20 hour limit and
 should be revisited if product or backend constraints differ.
 
-## ADR-001: Use feature-oriented modules with explicit domain and transport boundaries
+## ADR-001: Use a hybrid feature-oriented structure with explicit layer ownership
 
 - **Status:** Accepted
-- **Decision:** Organize product code around the operations feature, with shared `domain`, `api`, `realtime`, `auth`, and `mocks` boundaries. UI consumes hooks/API contracts and never imports the mock database.
-- **Rationale:** This keeps a focused vertical slice easy to navigate while separating business rules, server access, protocol reconciliation, and presentation. It avoids both a flat component directory and premature multi-package architecture.
-- **Consequences:** Pure domain/reconciliation modules can be tested cheaply. Some feature-specific cache helpers stay near the feature rather than becoming misleading global abstractions.
+- **Decision:** Organize product code around `features/operations`, reusable
+  `entities/shipment` and `entities/operator`, technical `shared` primitives,
+  and explicit `realtime`, `auth`, `mocks`, and `app` boundaries. Operations
+  separates `api`, `model`, and `ui`; shared code has no upward dependencies.
+- **Rationale:** Ownership follows why code changes: Shipment and Operator
+  contracts can serve other use cases, board filters/summaries remain
+  Operations-specific, and transport/UI primitives remain reusable without
+  becoming a dumping ground.
+- **Consequences:** Entity modules cannot import features or app. Realtime
+  consumes a narrow cache port implemented by Operations, avoiding the previous
+  feature/realtime cycle while retaining the same query keys and reconciliation
+  behavior. The application composition root injects the mock transport used by
+  this take-home.
 
 ## ADR-002: Assign state to TanStack Query, React Router, local React, and a narrow reconciliation registry
 

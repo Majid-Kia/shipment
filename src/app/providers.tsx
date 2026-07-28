@@ -1,21 +1,24 @@
-import { QueryClientProvider, type QueryClient } from "@tanstack/react-query";
-import type { ReactNode } from "react";
+import {
+  QueryClientProvider,
+  type QueryClient,
+  useQueryClient,
+} from "@tanstack/react-query";
+import { useMemo, type ReactNode } from "react";
 
 import { createAppQueryClient } from "@/app/query-client";
 import type { UserRole } from "@/auth/permissions";
 import { RoleProvider } from "@/auth/role-context";
-import { MockShipmentEventSource } from "@/mocks/realtime-source";
+import { createOperationsRealtimeCache } from "@/features/operations/model/operations-realtime-cache";
 import type { ShipmentEventSource } from "@/realtime/contracts";
 import { RealtimeProvider } from "@/realtime/realtime-provider";
 
 const appQueryClient = createAppQueryClient();
-const appRealtimeSource = new MockShipmentEventSource();
 
 interface AppProvidersProps {
   children: ReactNode;
   queryClient?: QueryClient;
   initialRole?: UserRole;
-  realtimeSource?: ShipmentEventSource;
+  realtimeSource: ShipmentEventSource;
 }
 
 export function AppProviders({
@@ -27,10 +30,30 @@ export function AppProviders({
   return (
     <QueryClientProvider client={queryClient}>
       <RoleProvider initialRole={initialRole}>
-        <RealtimeProvider source={realtimeSource ?? appRealtimeSource}>
+        <OperationsRealtimeProvider source={realtimeSource}>
           {children}
-        </RealtimeProvider>
+        </OperationsRealtimeProvider>
       </RoleProvider>
     </QueryClientProvider>
+  );
+}
+
+function OperationsRealtimeProvider({
+  children,
+  source,
+}: {
+  children: ReactNode;
+  source: ShipmentEventSource;
+}) {
+  const queryClient = useQueryClient();
+  const cache = useMemo(
+    () => createOperationsRealtimeCache(queryClient),
+    [queryClient],
+  );
+
+  return (
+    <RealtimeProvider cache={cache} source={source}>
+      {children}
+    </RealtimeProvider>
   );
 }

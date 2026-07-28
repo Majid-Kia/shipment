@@ -4,8 +4,8 @@ import {
   EXCEPTION_TYPES,
   SHIPMENT_PRIORITIES,
   SHIPMENT_STATUSES,
-  operatorSchema,
-} from "@/domain/shipment";
+} from "@/entities/shipment/model/shipment";
+import { operatorSchema } from "@/entities/operator/model/operator";
 
 export const shipmentRealtimeEventSchema = z.strictObject({
   eventId: z.string().min(1),

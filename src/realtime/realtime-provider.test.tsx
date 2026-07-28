@@ -10,6 +10,7 @@ import {
   RealtimeProvider,
   useRealtimeConnectionState,
 } from "@/realtime/realtime-provider";
+import type { ShipmentRealtimeCache } from "@/realtime/shipment-cache";
 
 class ManualShipmentEventSource implements ShipmentEventSource {
   private eventListeners = new Set<(event: unknown) => void>();
@@ -61,23 +62,30 @@ function StateProbe() {
 describe("RealtimeProvider", () => {
   it("reports disconnect/reconnect and invalidates on reconnect", () => {
     const queryClient = new QueryClient();
-    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+    const cache: ShipmentRealtimeCache = {
+      applyEvent: vi.fn(),
+      findHighestVersion: vi.fn(),
+      invalidateLists: vi.fn(),
+      invalidateObservedDetails: vi.fn(),
+    };
     const source = new ManualShipmentEventSource();
     const view = render(
       <QueryClientProvider client={queryClient}>
-        <RealtimeProvider source={source}>
+        <RealtimeProvider cache={cache} source={source}>
           <StateProbe />
         </RealtimeProvider>
       </QueryClientProvider>,
     );
 
     expect(screen.getByText("connected")).toBeInTheDocument();
-    invalidate.mockClear();
+    vi.mocked(cache.invalidateLists).mockClear();
+    vi.mocked(cache.invalidateObservedDetails).mockClear();
     act(() => source.setConnectionState("disconnected"));
     expect(screen.getByText("disconnected")).toBeInTheDocument();
     act(() => source.setConnectionState("connected"));
     expect(screen.getByText("connected")).toBeInTheDocument();
-    expect(invalidate).toHaveBeenCalledTimes(2);
+    expect(cache.invalidateLists).toHaveBeenCalledTimes(1);
+    expect(cache.invalidateObservedDetails).toHaveBeenCalledTimes(1);
 
     view.unmount();
     expect(source.getConnectionState()).toBe("disconnected");

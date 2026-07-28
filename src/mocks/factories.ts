@@ -1,13 +1,13 @@
+import type { Operator } from "@/entities/operator/model/operator";
 import type {
-  Operator,
   ShipmentDetails,
   ShipmentStatus,
-} from "@/domain/shipment";
+} from "@/entities/shipment/model/shipment";
 import {
   EXCEPTION_TYPES,
   PORT_CODES,
   SHIPMENT_PRIORITIES,
-} from "@/domain/shipment";
+} from "@/entities/shipment/model/shipment";
 
 const BASE_TIME = Date.parse("2026-07-21T12:00:00.000Z");
 

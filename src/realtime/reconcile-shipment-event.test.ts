@@ -1,9 +1,10 @@
 import { QueryClient } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import type { ShipmentListResponse } from "@/api/shipment-contracts";
-import type { Shipment } from "@/domain/shipment";
-import { operationsKeys } from "@/features/operations/operations-query-keys";
+import type { ShipmentListResponse } from "@/features/operations/api/operations-contracts";
+import type { Shipment } from "@/entities/shipment/model/shipment";
+import { createOperationsRealtimeCache } from "@/features/operations/model/operations-realtime-cache";
+import { operationsKeys } from "@/features/operations/model/operations-query-keys";
 import type { ShipmentRealtimeEvent } from "@/realtime/contracts";
 import { ReconciliationRegistry } from "@/realtime/reconciliation-registry";
 import { reconcileShipmentEvent } from "@/realtime/reconcile-shipment-event";
@@ -40,10 +41,12 @@ function event(
 
 describe("reconcileShipmentEvent", () => {
   let queryClient: QueryClient;
+  let cache: ReturnType<typeof createOperationsRealtimeCache>;
   let registry: ReconciliationRegistry;
 
   beforeEach(() => {
     queryClient = new QueryClient();
+    cache = createOperationsRealtimeCache(queryClient);
     registry = new ReconciliationRegistry();
     queryClient.setQueryData<ShipmentListResponse>(
       operationsKeys.list(listParams),
@@ -67,7 +70,7 @@ describe("reconcileShipmentEvent", () => {
     expect(
       reconcileShipmentEvent(
         { ...event(), payload: { unexpected: true } },
-        queryClient,
+        cache,
         registry,
       ),
     ).toEqual({ accepted: false, reason: "invalid" });
@@ -77,13 +80,13 @@ describe("reconcileShipmentEvent", () => {
   });
 
   it("rejects duplicate event IDs without touching the cache", () => {
-    expect(
-      reconcileShipmentEvent(event(), queryClient, registry).accepted,
-    ).toBe(true);
+    expect(reconcileShipmentEvent(event(), cache, registry).accepted).toBe(
+      true,
+    );
     const cached = queryClient.getQueryData(operationsKeys.list(listParams));
 
     expect(
-      reconcileShipmentEvent(event({ version: 19 }), queryClient, registry),
+      reconcileShipmentEvent(event({ version: 19 }), cache, registry),
     ).toEqual({ accepted: false, reason: "duplicate" });
     expect(queryClient.getQueryData(operationsKeys.list(listParams))).toBe(
       cached,
@@ -95,7 +98,7 @@ describe("reconcileShipmentEvent", () => {
     expect(
       reconcileShipmentEvent(
         event({ eventId: "event-17", version: 17 }),
-        queryClient,
+        cache,
         registry,
       ),
     ).toEqual({ accepted: false, reason: "stale" });
@@ -106,7 +109,7 @@ describe("reconcileShipmentEvent", () => {
     expect(
       reconcileShipmentEvent(
         event({ eventId: "event-19", version: 19 }),
-        queryClient,
+        cache,
         registry,
       ),
     ).toEqual({ accepted: true });
@@ -116,7 +119,7 @@ describe("reconcileShipmentEvent", () => {
     expect(
       reconcileShipmentEvent(
         event({ eventId: "event-18-late", version: 18 }),
-        queryClient,
+        cache,
         registry,
       ),
     ).toEqual({ accepted: false, reason: "stale" });
@@ -126,7 +129,7 @@ describe("reconcileShipmentEvent", () => {
   });
 
   it("applies a newer event and preserves unrelated row references", () => {
-    const result = reconcileShipmentEvent(event(), queryClient, registry);
+    const result = reconcileShipmentEvent(event(), cache, registry);
     const data = queryClient.getQueryData<ShipmentListResponse>(
       operationsKeys.list(listParams),
     )!;
@@ -143,7 +146,7 @@ describe("reconcileShipmentEvent", () => {
   it("records non-visible versions without creating cache entries", () => {
     const result = reconcileShipmentEvent(
       event({ eventId: "hidden-4", shipmentId: "hidden", version: 4 }),
-      queryClient,
+      cache,
       registry,
     );
 

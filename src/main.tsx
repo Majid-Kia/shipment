@@ -1,9 +1,11 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
-import App from "@/App";
-import "@/index.css";
+import App from "@/app/App";
+import "@/app/styles.css";
+import { MockShipmentEventSource } from "@/mocks/realtime-source";
 
+const appRealtimeSource = new MockShipmentEventSource();
 const rootElement = document.getElementById("root");
 if (!rootElement) {
   throw new Error("The application root element was not found.");
@@ -21,7 +23,7 @@ async function enableMocking() {
 void enableMocking().then(() => {
   createRoot(rootElement).render(
     <StrictMode>
-      <App />
+      <App realtimeSource={appRealtimeSource} />
     </StrictMode>,
   );
 });

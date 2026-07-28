@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ApiClientError } from "@/api/errors";
+import { ApiClientError } from "@/shared/api/errors";
 import { createAppQueryClient } from "@/app/query-client";
 
 describe("query client resilience policy", () => {

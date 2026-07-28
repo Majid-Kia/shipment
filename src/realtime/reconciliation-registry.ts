@@ -1,5 +1,6 @@
 import type { QueryClient } from "@tanstack/react-query";
 
+import type { Operator } from "@/entities/operator/model/operator";
 import type { ShipmentRealtimeEvent } from "@/realtime/contracts";
 
 const DEFAULT_EVENT_TTL = 10 * 60 * 1000;
@@ -7,7 +8,7 @@ const DEFAULT_EVENT_LIMIT = 1_000;
 
 export type OptimisticOverlay = {
   status?: "ACKNOWLEDGED";
-  assignedTo?: { id: string; name: string };
+  assignedTo?: Operator;
 };
 
 interface PendingMutation {

@@ -1,15 +1,15 @@
 import type {
   ShipmentListParams,
   ShipmentListResponse,
-} from "@/api/shipment-contracts";
+} from "@/features/operations/api/operations-contracts";
 import {
   EXCEPTION_TYPES,
   SHIPMENT_PRIORITIES,
   toShipment,
-  type Operator,
   type ShipmentDetails,
   type ShipmentStatus,
-} from "@/domain/shipment";
+} from "@/entities/shipment/model/shipment";
+import type { Operator } from "@/entities/operator/model/operator";
 import { createOperators, createShipments } from "@/mocks/factories";
 import type { ShipmentRealtimeEvent } from "@/realtime/contracts";
 
