@@ -203,7 +203,7 @@ Page-number pagination was chosen over infinite scrolling/virtualization;
 filtered aggregate convergence uses debounced refetch rather than maintaining
 every cached result perfectly; the mock repository scans 5,000 records; only
 one mutation per shipment is allowed; there is no offline mutation queue,
-production backend, or full E2E suite.
+production backend, or full E2E suite. Drawer status lost in refresh.
 
 ### What would improve with one additional working day?
 
