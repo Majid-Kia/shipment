@@ -130,59 +130,72 @@ pagination, and likely row virtualization for larger client windows.
 
 ### How did you separate server state from local UI state?
 
-Remote shipments/operators live only in TanStack Query. Filters/page live in
-the router URL. Sheet selection and assignment input are component state.
-Role/connection state use narrow contexts. Protocol bookkeeping lives outside
-React in the reconciliation registry.
+Server state—shipments, shipment details, operators, summaries, loading status, errors, and mutation results—is managed by TanStack Query. It owns fetching, caching, invalidation, polling, retries, optimistic updates, and rollback. Components consume the Query Cache directly; I do not copy query results into local useState, because that would create two sources of truth and introduce synchronization problems.
+
+Shareable navigation state, such as filters and pagination, is stored in the URL through React Router. This allows refresh, deep linking, browser history, and sharing the current board view.
+
+Local UI state is limited to transient concerns that do not belong to the server or URL. For example, the currently selected shipment ID is local state because it controls whether the details drawer is open. The search input also has a local draft value so typing can update immediately and be debounced before committing the value to the URL.
+
+Small application-wide client states, such as the mock user role and realtime connection status, are managed through focused React contexts.
+
+For mutation and realtime coordination, I use a non-rendering registry rather than component state. It tracks pending mutations, optimistic overlays, processed event IDs, and confirmed versions without causing unnecessary React renders.
+
+the ownership model is:
+
+TanStack Query
+→ remote server state
+
+React Router URL
+→ filters and pagination
+
+Local React state
+→ selected shipment and temporary input state
+
+React Context
+→ role and realtime connection status
+
+Reconciliation registry
+→ non-visual concurrency metadata
 
 ### Why this folder and module structure?
 
-The operations feature keeps its UI and workflows together while domain, API,
-mock transport, realtime protocol, and authorization remain independent
-boundaries. Reconciliation is directly testable and neither components nor API
-code import the mock database.
+I chose a pragmatic, feature-oriented modular structure rather than a purely layer-based structure. The main goal was to keep files close to the business capability that owns them while still separating reusable domain and infrastructure concerns.
+
+The app layer contains only application composition, such as providers, routing, and Query Client configuration. Generic technical building blocks, including the HTTP client, error handling, UI primitives, and utilities, live under shared. Reusable business concepts such as Shipment and Operator, along with their entity-level APIs, are placed under entities.
+
+The Operations Board is organized as a vertical feature slice. Its API contracts, query orchestration, URL state, optimistic mutations, cache coordination, and UI are colocated under features/operations. This makes it easier to understand and modify the complete Operations workflow without navigating through generic folders such as hooks, services, types, and components.
+
+I also separated realtime, auth, and mocks because they represent distinct boundaries. The realtime layer owns event transport and reconciliation, the auth layer owns roles and permissions, and the mocks layer simulates the backend without leaking mock-specific implementations into production modules.
+
+The dependency direction is intentional: features can depend on entities and shared modules, but entities and shared modules must not depend on features. This reduces coupling and helps prevent circular dependencies.
+
+I also placed APIs according to ownership rather than putting every endpoint in one global API folder. For example, the Operations Board list endpoint lives in the Operations feature because its filtering, summary, and pagination semantics belong to that workflow. A reusable endpoint such as fetching a Shipment by ID belongs to the Shipment entity, while the generic HTTP mechanism remains in shared/api.
+
+This is not a strict implementation of Feature-Sliced Design or Clean Architecture. It is a pragmatic version suitable for the project’s scope and timebox. It keeps the current code discoverable while providing a clear path for adding more entities and features without turning shared folders into dumping grounds.
 
 ### How are realtime events reconciled with the query cache?
 
-Validated, accepted partial patches update only cached representations that
-already contain the shipment. Detail and every matching cached list receive the
-same version/timestamp. List invalidation handles membership, order, and
-aggregate convergence.
+Incoming events are validated, merged with the latest confirmed shipment state, and applied to both list and detail cache entries. Related queries are then invalidated when totals, ordering, or filter membership may have changed, allowing HTTP refetches to restore full consistency.
 
 ### How are duplicate and out-of-order events handled?
 
-A TTL/LRU set retains at most 1,000 recent event IDs. Per-shipment confirmed
-version high-water marks reject stale or equal versions. Both checks occur
-before cache mutation.
+Each event has a unique eventId and a shipment version. Previously processed IDs are ignored as duplicates, while events whose version is not newer than the confirmed shipment version are rejected as stale or out of order.
 
 ### How does optimistic rollback work?
 
-Every affected query entry is snapshotted before the overlay. Failure restores
-those exact references, then replays accepted newer realtime patches in version
-order so rollback cannot discard later server truth.
+Before a mutation, the affected cache entries are snapshotted and an optimistic overlay is applied. If the request fails, the overlay is removed, the snapshots are restored, and any newer real-time events received during the request are replayed so valid concurrent updates are not lost.
 
 ### How are mutation/realtime conflicts resolved?
 
-The complete mutation response is the authoritative causal base. Later partial
-events are replayed over it. While pending, the mutation-owned field remains an
-unversioned overlay and unrelated event fields remain visible. Success removes
-the overlay after response-plus-event reconstruction; failure removes it after
-snapshot-plus-event reconstruction.
+Mutations use expectedVersion for optimistic concurrency control. While a mutation is pending, real-time events update the confirmed base state and the optimistic overlay remains visible. On success or failure, the client combines the authoritative response or restored snapshot with any newer accepted events.
 
 ### What changes for 100,000 shipments?
 
-Filtering, sorting, and summaries move to an indexed persistent backend with
-cursor pagination. Event routing would use a broker and durable
-sequence/checkpoint semantics. The browser would retain bounded pages,
-virtualize larger windows, and receive versioned response envelopes to merge
-independently racing snapshot and event services.
+The UI would continue using server-side pagination rather than loading all records. The backend would require indexed filtering and sorting, potentially cursor-based pagination, efficient aggregate queries, and durable event sequencing. Virtualization would only be necessary if significantly more rows were rendered on one page.
 
 ### How would production authentication and authorization be introduced?
 
-An OIDC client would obtain short-lived tokens and derive display capabilities
-from verified claims. The API gateway/backend would validate issuer, audience,
-expiry, scopes, and tenant access for every request. UI capability gates would
-remain convenience only; backend authorization would be authoritative.
+The mock role header would be replaced with an authenticated session or access token, typically using OIDC or OAuth. The backend would derive the user’s identity and permissions from trusted claims and enforce authorization on every operation. Client-side permission checks would remain only as a UX enhancement.
 
 ### Which timebox trade-offs were accepted?
 
