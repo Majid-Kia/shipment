@@ -35,12 +35,16 @@ export function RealtimeProvider({
   const registry = getReconciliationRegistry(queryClient);
   const [connectionState, setConnectionState] =
     useState<RealtimeConnectionState>(source.getConnectionState());
-
   useEffect(() => {
     let invalidationTimer: ReturnType<typeof setTimeout> | undefined;
-    let previousState = source.getConnectionState();
+
+    let hasConnectedOnce = source.getConnectionState() === "connected";
+
+    let shouldRefreshAfterReconnect = false;
+
     const unsubscribeEvents = source.subscribe((event) => {
       const result = reconcileShipmentEvent(event, cache, registry);
+
       if (result.accepted && !invalidationTimer) {
         invalidationTimer = setTimeout(() => {
           cache.invalidateLists();
@@ -48,24 +52,38 @@ export function RealtimeProvider({
         }, 250);
       }
     });
+
     const unsubscribeConnection = source.subscribeToConnection((state) => {
       setConnectionState(state);
-      if (state === "connected" && previousState === "disconnected") {
-        cache.invalidateLists();
-        cache.invalidateObservedDetails();
+
+      if (state === "disconnected" && hasConnectedOnce) {
+        shouldRefreshAfterReconnect = true;
       }
-      previousState = state;
+
+      if (state === "connected") {
+        if (shouldRefreshAfterReconnect) {
+          cache.invalidateLists();
+          cache.invalidateObservedDetails();
+        }
+
+        hasConnectedOnce = true;
+        shouldRefreshAfterReconnect = false;
+      }
     });
 
     source.connect();
+
     return () => {
       unsubscribeEvents();
       unsubscribeConnection();
-      if (invalidationTimer) clearTimeout(invalidationTimer);
+
+      if (invalidationTimer) {
+        clearTimeout(invalidationTimer);
+      }
+
       source.disconnect();
     };
-  }, [cache, queryClient, registry, source]);
-
+  }, [cache, registry, source]);
   return (
     <RealtimeStateContext value={connectionState}>
       {children}

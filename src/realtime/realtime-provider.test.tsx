@@ -20,6 +20,7 @@ class ManualShipmentEventSource implements ShipmentEventSource {
   private state: RealtimeConnectionState = "disconnected";
 
   connect() {
+    this.setConnectionState("connecting");
     this.setConnectionState("connected");
   }
 
@@ -60,15 +61,18 @@ function StateProbe() {
 }
 
 describe("RealtimeProvider", () => {
-  it("reports disconnect/reconnect and invalidates on reconnect", () => {
+  it("refreshes cached data after the full reconnect lifecycle", () => {
     const queryClient = new QueryClient();
+
     const cache: ShipmentRealtimeCache = {
       applyEvent: vi.fn(),
       findHighestVersion: vi.fn(),
       invalidateLists: vi.fn(),
       invalidateObservedDetails: vi.fn(),
     };
+
     const source = new ManualShipmentEventSource();
+
     const view = render(
       <QueryClientProvider client={queryClient}>
         <RealtimeProvider cache={cache} source={source}>
@@ -78,16 +82,35 @@ describe("RealtimeProvider", () => {
     );
 
     expect(screen.getByText("connected")).toBeInTheDocument();
-    vi.mocked(cache.invalidateLists).mockClear();
-    vi.mocked(cache.invalidateObservedDetails).mockClear();
-    act(() => source.setConnectionState("disconnected"));
+
+    // Initial connection should not be treated as a reconnect.
+    expect(cache.invalidateLists).not.toHaveBeenCalled();
+    expect(cache.invalidateObservedDetails).not.toHaveBeenCalled();
+
+    act(() => {
+      source.setConnectionState("disconnected");
+    });
+
     expect(screen.getByText("disconnected")).toBeInTheDocument();
-    act(() => source.setConnectionState("connected"));
+    expect(cache.invalidateLists).not.toHaveBeenCalled();
+
+    act(() => {
+      source.setConnectionState("connecting");
+    });
+
+    expect(screen.getByText("connecting")).toBeInTheDocument();
+    expect(cache.invalidateLists).not.toHaveBeenCalled();
+
+    act(() => {
+      source.setConnectionState("connected");
+    });
+
     expect(screen.getByText("connected")).toBeInTheDocument();
     expect(cache.invalidateLists).toHaveBeenCalledTimes(1);
     expect(cache.invalidateObservedDetails).toHaveBeenCalledTimes(1);
 
     view.unmount();
+
     expect(source.getConnectionState()).toBe("disconnected");
   });
 });
